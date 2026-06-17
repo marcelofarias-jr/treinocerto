@@ -298,6 +298,15 @@ export default function Treino() {
     return { total, totalSets, doneSets, pct }
   }
 
+  function cancelWorkout() {
+    clearWorkoutStorage()
+    setSelectedDayId(null)
+    setSetsData({})
+    setCurrentIdx(0)
+    setElapsed(0)
+    router.push('/')
+  }
+
   async function finish() {
     setFinishing(true)
     const start = localStorage.getItem('workoutStartTime')
@@ -420,22 +429,35 @@ export default function Treino() {
               </div>
             </div>
             <p className="text-zinc-400 text-sm mb-6">
-              Os dados das séries completadas serão salvos. Series não marcadas como feitas serão ignoradas.
+              Os dados das séries completadas serão salvos. Séries não marcadas como feitas serão ignoradas.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowFinishModal(false)}
                 className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
               >
-                Cancelar
+                Continuar
               </button>
               <button
                 onClick={() => { setShowFinishModal(false); finish() }}
                 disabled={finishing}
                 className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
               >
-                {finishing ? 'Salvando...' : 'Finalizar'}
+                {finishing ? 'Salvando...' : 'Salvar treino'}
               </button>
+            </div>
+
+            {/* Opção destrutiva: cancelar sem salvar */}
+            <div className="mt-5 pt-4 border-t border-zinc-800">
+              <button
+                onClick={() => { setShowFinishModal(false); cancelWorkout() }}
+                className="w-full py-2.5 text-red-500 hover:text-red-400 font-semibold uppercase tracking-wide text-xs transition-colors"
+              >
+                Cancelar treino sem salvar
+              </button>
+              <p className="text-zinc-600 text-[11px] text-center mt-1">
+                O treino não ficará no histórico
+              </p>
             </div>
           </div>
         </div>
@@ -445,7 +467,7 @@ export default function Treino() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-5">
           <button
-            onClick={() => { setSelectedDayId(null); clearWorkoutStorage(); setElapsed(0) }}
+            onClick={() => router.push('/')}
             className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
