@@ -441,7 +441,7 @@ export default function Treino() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-4 pt-4 pb-6">
         {/* Top bar */}
         <div className="flex items-center justify-between mb-5">
           <button
@@ -468,7 +468,7 @@ export default function Treino() {
         </div>
 
         {/* Hero */}
-        <div className="relative bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6 mb-5 overflow-hidden">
+        <div className="relative bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4 md:p-6 mb-4 overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-900/20 rounded-full blur-3xl pointer-events-none" />
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0 mr-6">
@@ -504,10 +504,42 @@ export default function Treino() {
           </div>
         </div>
 
+        {/* Mobile: exercise pills (horizontal scroll) */}
+        <div className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 mb-4">
+          {flatEx.map((e, i) => {
+            const { done: d, total: t } = getExProg(i)
+            const active = i === currentIdx
+            const complete = d === t && t > 0
+            return (
+              <button key={i} onClick={() => setCurrentIdx(i)}
+                className={`flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl border transition-all min-w-[72px] ${
+                  active ? 'bg-red-900/40 border-red-600'
+                  : complete ? 'bg-green-950/30 border-green-900'
+                  : 'bg-[#1a1a1a] border-zinc-800'
+                }`}
+              >
+                <span className={`w-7 h-7 rounded flex items-center justify-center text-xs font-black ${
+                  active ? 'bg-red-600 text-white'
+                  : complete ? 'bg-green-700 text-white'
+                  : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {complete
+                    ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                    : i + 1
+                  }
+                </span>
+                <span className={`text-[10px] text-center leading-tight w-full line-clamp-2 ${
+                  active ? 'text-white' : complete ? 'text-green-400' : 'text-zinc-500'
+                }`}>{e.name}</span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* Split layout */}
-        <div className="flex gap-4" style={{ minHeight: '420px' }}>
-          {/* Esquerda: lista de exercícios */}
-          <div ref={listRef} className="w-64 flex-shrink-0 space-y-2 overflow-y-auto max-h-[520px]">
+        <div className="flex flex-col md:flex-row gap-4 md:min-h-[420px]">
+          {/* Esquerda: lista de exercícios (desktop only) */}
+          <div ref={listRef} className="hidden md:block w-64 flex-shrink-0 space-y-2 overflow-y-auto max-h-[520px]">
             {flatEx.map((e, i) => {
               const { done: d, total: t } = getExProg(i)
               const active = i === currentIdx
@@ -667,7 +699,7 @@ export default function Treino() {
               <button
                 onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}
                 disabled={currentIdx === 0}
-                className="px-5 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-heading font-bold uppercase tracking-widest text-xs rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-4 md:px-5 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-heading font-bold uppercase tracking-widest text-xs rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Anterior
               </button>
@@ -675,16 +707,16 @@ export default function Treino() {
                 <button
                   onClick={finish}
                   disabled={finishing}
-                  className="px-6 py-2.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
+                  className="px-5 md:px-6 py-3 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
                 >
                   {finishing ? 'Salvando...' : 'Finalizar treino'}
                 </button>
               ) : (
                 <button
                   onClick={() => setCurrentIdx(i => Math.min(flatEx.length - 1, i + 1))}
-                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors flex items-center gap-2"
+                  className="px-5 md:px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors flex items-center gap-2"
                 >
-                  Próximo exercício
+                  Próximo
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
