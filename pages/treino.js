@@ -146,15 +146,45 @@ export default function Treino() {
 
         setSelectedDayId(savedDayId)
         setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
+
+        // Tenta restaurar setsData do localStorage
+        let restoredSets = null
         try {
           const saved = localStorage.getItem('workoutSetsData')
-          if (saved) setSetsData(JSON.parse(saved))
+          if (saved) restoredSets = JSON.parse(saved)
         } catch (_) {}
 
-        // Busca histórico para o dia restaurado
+        const hasRestoredSets = restoredSets && Object.keys(restoredSets).length > 0
+
+        // Busca histórico e, se necessário, reinicializa os sets a partir da configuração do treino
         fetch(`/api/sessions?email=${session.user.email}`)
           .then(r => r.json())
-          .then(sessions => setExerciseHistory(buildHistory(sessions)))
+          .then(sessions => {
+            const history = buildHistory(sessions)
+            setExerciseHistory(history)
+
+            if (hasRestoredSets) {
+              setSetsData(restoredSets)
+            } else {
+              // setsData não estava salvo — inicializa a partir do treino + histórico
+              const d = w.days.find(d => d.dayId === savedDayId)
+              const exs = d.exercises.flatMap(mg =>
+                mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
+              )
+              const init = {}
+              exs.forEach((ex, i) => {
+                const n = Math.max(1, parseInt(ex.series) || 3)
+                const prev = history[ex.name]?.lastSets || []
+                init[i] = Array.from({ length: n }, (_, si) => ({
+                  carga: prev[si]?.carga || ex.carga || '',
+                  repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
+                  done: false,
+                }))
+              })
+              setSetsData(init)
+              localStorage.setItem('workoutSetsData', JSON.stringify(init))
+            }
+          })
       })
   }, [session])
 
