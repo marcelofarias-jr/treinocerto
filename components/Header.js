@@ -108,9 +108,8 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Bottom nav — mobile only, hidden on treino page */}
-      {!isTrainoAtivo && (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0f0f0f] border-t border-zinc-800"
+      {/* Bottom nav — mobile only */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0f0f0f] border-t border-zinc-800"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div className="flex">
@@ -129,8 +128,7 @@ export default function Header() {
               );
             })}
           </div>
-        </nav>
-      )}
+      </nav>
     </>
   );
 }
