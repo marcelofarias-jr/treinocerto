@@ -124,6 +124,7 @@ export default function Treino() {
   const [done, setDone] = useState(false)
   const [exerciseHistory, setExerciseHistory] = useState({})
   const [showFinishModal, setShowFinishModal] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const listRef = useRef(null)
 
   // Carrega o treino do usuário e restaura sessão ativa se houver
@@ -450,7 +451,7 @@ export default function Treino() {
             {/* Opção destrutiva: cancelar sem salvar */}
             <div className="mt-5 pt-4 border-t border-zinc-800">
               <button
-                onClick={() => { setShowFinishModal(false); cancelWorkout() }}
+                onClick={() => { setShowFinishModal(false); setShowCancelConfirm(true) }}
                 className="w-full py-2.5 text-red-500 hover:text-red-400 font-semibold uppercase tracking-wide text-xs transition-colors"
               >
                 Cancelar treino sem salvar
@@ -458,6 +459,42 @@ export default function Treino() {
               <p className="text-zinc-600 text-[11px] text-center mt-1">
                 O treino não ficará no histórico
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/75" onClick={() => setShowCancelConfirm(false)} />
+          <div className="relative bg-[#1a1a1a] border border-red-900 rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-900/40 border border-red-700 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-heading font-black text-xl uppercase text-white leading-none">Cancelar treino</h3>
+                <p className="text-zinc-500 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
+              </div>
+            </div>
+            <p className="text-zinc-400 text-sm mb-6">
+              Todo o progresso será perdido. O treino não será salvo no histórico.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+              >
+                Manter treino
+              </button>
+              <button
+                onClick={cancelWorkout}
+                className="flex-1 py-3 bg-red-700 hover:bg-red-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors"
+              >
+                Sim, cancelar
+              </button>
             </div>
           </div>
         </div>
