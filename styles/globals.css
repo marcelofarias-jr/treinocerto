@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  @apply bg-[#0f0f0f] text-white;
+  font-family: 'Inter', sans-serif;
+}
+
+input, select, textarea {
+  @apply bg-[#1f1f1f] border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2 text-sm;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus {
+  @apply border-red-500;
+}
