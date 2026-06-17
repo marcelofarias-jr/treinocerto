@@ -11,7 +11,7 @@ export default async function handler(req, res) {
       .eq('user_email', email)
       .order('date', { ascending: true })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) { console.error('sessions GET:', error.message); return res.status(500).json({ error: error.message }) }
     return res.status(200).json(data.map(normalizeSession))
   }
 

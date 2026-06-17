@@ -106,8 +106,10 @@ export default function Home() {
       fetch(`/api/workouts?email=${session.user.email}`).then(r => r.json()),
       fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json()),
     ]).then(([workouts, sessions]) => {
-      if (workouts.length > 0) setWorkout(workouts[workouts.length - 1])
-      setTrainedDates(new Set(sessions.map(s => s.date)))
+      const ws = Array.isArray(workouts) ? workouts : []
+      const ss = Array.isArray(sessions) ? sessions : []
+      if (ws.length > 0) setWorkout(ws[ws.length - 1])
+      setTrainedDates(new Set(ss.map(s => s.date)))
       setLoadingData(false)
     })
   }, [session])

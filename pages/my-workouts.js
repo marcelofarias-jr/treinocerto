@@ -16,7 +16,7 @@ export default function MyWorkouts() {
     fetch(`/api/workouts?email=${session.user.email}`)
       .then((r) => r.json())
       .then((data) => {
-        setWorkouts(data);
+        setWorkouts(Array.isArray(data) ? data : []);
         setLoading(false);
       });
   }, [session]);
