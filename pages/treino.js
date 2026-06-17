@@ -74,7 +74,11 @@ function RestTimerOverlay({ seconds, onDone }) {
 
   useEffect(() => {
     if (remaining <= 0) {
-      if (!beeped.current) { beeped.current = true; playBeep() }
+      if (!beeped.current) {
+        beeped.current = true
+        playBeep()
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500])
+      }
       const t = setTimeout(onDone, 800)
       return () => clearTimeout(t)
     }
