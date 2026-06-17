@@ -86,7 +86,7 @@ export default function Header() {
               return (
                 <Link key={href} href={href}
                   className={`px-4 py-5 text-xs font-semibold uppercase tracking-widest border-b-2 transition-colors ${
-                    active ? "text-white border-red-500" : "text-zinc-500 border-transparent hover:text-zinc-300"
+                    active ? "text-white border-red-500" : "text-zinc-300 border-transparent hover:text-white"
                   }`}
                 >
                   {label}
@@ -104,7 +104,7 @@ export default function Header() {
           {/* Mobile: sign out button */}
           <button
             onClick={() => signOut()}
-            className="md:hidden text-xs font-semibold uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors px-2 py-2"
+            className="md:hidden text-xs font-semibold uppercase tracking-widest text-zinc-400 hover:text-zinc-200 transition-colors px-2 py-2"
           >
             Sair
           </button>
@@ -121,7 +121,7 @@ export default function Header() {
               return (
                 <Link key={href} href={href}
                   className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${
-                    active ? "text-red-500" : "text-zinc-600 hover:text-zinc-400"
+                    active ? "text-red-500" : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
                   {icon}

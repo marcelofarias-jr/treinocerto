@@ -43,7 +43,7 @@ export default function MyWorkouts() {
 
         <div className="flex items-end justify-between mb-8">
           <div>
-            <p className="text-xs text-zinc-600 uppercase tracking-widest mb-1">Seus planos</p>
+            <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Seus planos</p>
             <h1 className="font-heading font-black text-4xl uppercase text-white">Meus Treinos</h1>
           </div>
           <Link
@@ -62,7 +62,7 @@ export default function MyWorkouts() {
           </div>
         ) : workouts.length === 0 ? (
           <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-10 text-center">
-            <p className="text-zinc-500 mb-5">Nenhum treino salvo ainda.</p>
+            <p className="text-zinc-300 mb-5">Nenhum treino salvo ainda.</p>
             <Link
               href="/dashboard"
               className="inline-block px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors"
@@ -78,14 +78,14 @@ export default function MyWorkouts() {
                 <div key={workout.id} className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6">
                   <div className="flex justify-between items-start mb-5">
                     <div>
-                      <p className="text-xs text-zinc-600 uppercase tracking-widest mb-1">
+                      <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">
                         {new Date(workout.createdAt).toLocaleDateString("pt-BR")}
                       </p>
                       <h2 className="font-heading font-black text-2xl uppercase text-white">
                         {formatConfig?.name || workout.format}
                       </h2>
                       {workout.days && (
-                        <p className="text-zinc-500 text-xs mt-0.5">
+                        <p className="text-zinc-300 text-xs mt-0.5">
                           {workout.days.length} {workout.days.length === 1 ? 'dia' : 'dias'}
                         </p>
                       )}
@@ -93,7 +93,7 @@ export default function MyWorkouts() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => router.push(`/dashboard?edit=${workout.id}`)}
-                        className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 text-xs font-semibold uppercase tracking-wide rounded-lg transition-colors"
+                        className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wide rounded-lg transition-colors"
                       >
                         Editar
                       </button>
@@ -114,7 +114,7 @@ export default function MyWorkouts() {
                           <div className="space-y-2">
                             {day.exercises.map(mg => (
                               <div key={mg.muscleGroup}>
-                                <p className="text-xs text-zinc-600 uppercase tracking-widest mb-1">
+                                <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">
                                   {muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup}
                                 </p>
                                 <div className="flex flex-wrap gap-1.5">
@@ -156,11 +156,11 @@ export default function MyWorkouts() {
           <div className="absolute inset-0 bg-black/70" onClick={() => setConfirmDeleteId(null)} />
           <div className="relative bg-[#1a1a1a] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm">
             <h3 className="font-heading font-black text-xl uppercase text-white mb-1">Deletar treino</h3>
-            <p className="text-zinc-500 text-sm mb-6">Tem certeza? Esta ação não pode ser desfeita.</p>
+            <p className="text-zinc-300 text-sm mb-6">Tem certeza? Esta ação não pode ser desfeita.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+                className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
               >
                 Cancelar
               </button>

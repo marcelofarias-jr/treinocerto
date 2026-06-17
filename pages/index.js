@@ -42,7 +42,7 @@ function SessionModal({ session, onClose }) {
         <div className="p-5 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] text-zinc-500 tracking-widest mb-1 capitalize">{dateLabel}</p>
+              <p className="text-[10px] text-zinc-400 tracking-widest mb-1 capitalize">{dateLabel}</p>
               <h3 className="font-heading font-black text-2xl uppercase text-white leading-tight">
                 {session.dayLabel || 'Treino'}
               </h3>
@@ -51,7 +51,7 @@ function SessionModal({ session, onClose }) {
                   <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-xs text-zinc-400">{fmt(session.duration)}</span>
+                  <span className="text-xs text-zinc-300">{fmt(session.duration)}</span>
                 </div>
               )}
             </div>
@@ -66,7 +66,7 @@ function SessionModal({ session, onClose }) {
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-5 space-y-5">
           {!hasData ? (
-            <p className="text-zinc-500 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
+            <p className="text-zinc-300 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
           ) : (
             Object.entries(byGroup).map(([group, exercises]) => (
               <div key={group}>
@@ -77,11 +77,11 @@ function SessionModal({ session, onClose }) {
                       <p className="text-sm font-semibold text-white mb-2">{ex.name}</p>
                       <div className="space-y-1">
                         {ex.sets.map((set, si) => (
-                          <div key={si} className="flex items-center gap-3 text-xs text-zinc-400">
-                            <span className="w-6 font-heading font-bold text-zinc-600">{String(si + 1).padStart(2, '0')}</span>
+                          <div key={si} className="flex items-center gap-3 text-xs text-zinc-300">
+                            <span className="w-6 font-heading font-bold text-zinc-500">{String(si + 1).padStart(2, '0')}</span>
                             <span className="flex-1">
                               {set.carga && <span className="text-white font-semibold">{set.carga} kg</span>}
-                              {set.carga && set.repeticoes && <span className="text-zinc-600 mx-1">×</span>}
+                              {set.carga && set.repeticoes && <span className="text-zinc-500 mx-1">×</span>}
                               {set.repeticoes && <span>{set.repeticoes} reps</span>}
                             </span>
                             <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,20 +141,20 @@ function Calendar({ sessions, onDayClick }) {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <button onClick={prev} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors">
+        <button onClick={prev} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <p className="font-heading font-bold uppercase tracking-widest text-zinc-300 text-sm">{monthLabel}</p>
-        <button onClick={next} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors">
+        <p className="font-heading font-bold uppercase tracking-widest text-white text-sm">{monthLabel}</p>
+        <button onClick={next} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-widest text-zinc-600 mb-2">
+      <div className="grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-widest text-zinc-300 mb-2">
         {WEEK_DAYS.map(d => <span key={d}>{d}</span>)}
       </div>
 
@@ -167,7 +167,7 @@ function Calendar({ sessions, onDayClick }) {
                 className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all
                   ${cell.session ? 'bg-red-600 text-white font-bold hover:bg-red-500 cursor-pointer' : 'cursor-default'}
                   ${cell.isToday && !cell.session ? 'ring-2 ring-red-500 text-red-400' : ''}
-                  ${!cell.session && !cell.isToday ? 'text-zinc-500' : ''}
+                  ${!cell.session && !cell.isToday ? 'text-zinc-300' : ''}
                 `}
               >
                 {cell.d}
@@ -178,13 +178,13 @@ function Calendar({ sessions, onDayClick }) {
       </div>
 
       <div className="flex items-center gap-5 mt-4 pt-4 border-t border-zinc-800">
-        <span className="flex items-center gap-2 text-xs text-zinc-600">
+        <span className="flex items-center gap-2 text-xs text-zinc-300">
           <span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> Treino realizado
         </span>
-        <span className="flex items-center gap-2 text-xs text-zinc-600">
+        <span className="flex items-center gap-2 text-xs text-zinc-300">
           <span className="w-3 h-3 rounded-full ring-2 ring-red-500 inline-block" /> Hoje
         </span>
-        <span className="text-xs text-zinc-700">Toque para ver detalhes</span>
+        <span className="text-xs text-zinc-400">Toque para ver detalhes</span>
       </div>
     </div>
   )
@@ -262,7 +262,7 @@ export default function Home() {
         {/* Hero */}
         <div className="relative bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-7 overflow-hidden">
           <div className="absolute top-0 right-0 w-56 h-56 bg-red-900/25 rounded-full blur-3xl pointer-events-none" />
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">Bem-vindo de volta</p>
+          <p className="text-xs text-zinc-400 uppercase tracking-widest mb-3">Bem-vindo de volta</p>
           <h1 className="font-heading font-black text-4xl uppercase leading-tight text-white">
             OLÁ, {firstName.toUpperCase()}.
           </h1>
@@ -279,7 +279,7 @@ export default function Home() {
             <div className="flex justify-between items-start mb-5">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="text-xs text-zinc-600 uppercase tracking-widest">Treino atual</p>
+                  <p className="text-xs text-zinc-400 uppercase tracking-widest">Treino atual</p>
                   {activeWorkout && (
                     <span className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/20 border border-amber-600 rounded-full">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -288,11 +288,11 @@ export default function Home() {
                   )}
                 </div>
                 <h2 className="font-heading font-black text-2xl uppercase text-white">{formatConfig?.name}</h2>
-                <p className="text-zinc-500 text-xs mt-1">
+                <p className="text-zinc-300 text-xs mt-1">
                   {workout.days?.length} {workout.days?.length === 1 ? 'dia' : 'dias'} de treino
                 </p>
               </div>
-              <Link href="/my-workouts" className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest transition-colors">
+              <Link href="/my-workouts" className="text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors">
                 Ver todos →
               </Link>
             </div>
@@ -302,7 +302,7 @@ export default function Home() {
                 <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <p className="text-xs text-amber-400">Você tem um treino em andamento. Encerre-o antes de iniciar um novo.</p>
+                <p className="text-xs text-amber-300">Você tem um treino em andamento. Encerre-o antes de iniciar um novo.</p>
               </div>
             )}
 
@@ -328,7 +328,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 text-center">
-            <p className="text-zinc-500 text-sm mb-5">Você ainda não tem um treino criado.</p>
+            <p className="text-zinc-300 text-sm mb-5">Você ainda não tem um treino criado.</p>
             <Link href="/dashboard" className="inline-block px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
               Criar meu treino
             </Link>
@@ -337,7 +337,7 @@ export default function Home() {
 
         {/* Calendário */}
         <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6">
-          <p className="text-xs text-zinc-600 uppercase tracking-widest mb-5">Histórico de treinos</p>
+          <p className="text-xs text-zinc-400 uppercase tracking-widest mb-5">Histórico de treinos</p>
           {loadingData ? (
             <div className="h-52 animate-pulse bg-zinc-800/50 rounded-xl" />
           ) : (

@@ -91,7 +91,7 @@ function RestTimerOverlay({ seconds, onDone }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
       <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-10 text-center max-w-sm w-full">
-        <p className="text-xs text-zinc-500 uppercase tracking-widest mb-6">Descanso</p>
+        <p className="text-xs text-zinc-400 uppercase tracking-widest mb-6">Descanso</p>
         <p className={`font-heading font-black text-8xl leading-none mb-6 transition-colors ${remaining <= 5 ? 'text-red-500' : 'text-white'}`}>
           {fmt(remaining)}
         </p>
@@ -223,7 +223,7 @@ export default function Treino() {
     return (
       <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
         <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 text-center max-w-sm">
-          <p className="text-zinc-500 mb-5">Nenhum treino encontrado.</p>
+          <p className="text-zinc-300 mb-5">Nenhum treino encontrado.</p>
           <button onClick={() => router.push('/dashboard')} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
             Criar treino
           </button>
@@ -354,8 +354,8 @@ export default function Treino() {
             </svg>
           </div>
           <h2 className="font-heading font-black text-3xl uppercase text-white mb-1">Treino concluído!</h2>
-          <p className="text-zinc-500 text-sm mb-1">Duração: <span className="text-white font-semibold">{fmt(elapsed)}</span></p>
-          <p className="text-zinc-500 text-sm mb-6">Ótimo trabalho. Continue assim!</p>
+          <p className="text-zinc-300 text-sm mb-1">Duração: <span className="text-white font-semibold">{fmt(elapsed)}</span></p>
+          <p className="text-zinc-300 text-sm mb-6">Ótimo trabalho. Continue assim!</p>
           <button onClick={() => router.push('/')} className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
             Voltar ao início
           </button>
@@ -369,9 +369,9 @@ export default function Treino() {
     return (
       <div className="min-h-screen bg-[#0f0f0f]">
         <div className="max-w-lg mx-auto px-4 py-8">
-          <p className="text-xs text-zinc-600 uppercase tracking-widest mb-2">Treinar</p>
+          <p className="text-xs text-zinc-400 uppercase tracking-widest mb-2">Treinar</p>
           <h1 className="font-heading font-black text-4xl uppercase text-white mb-1">Qual dia é hoje?</h1>
-          <p className="text-zinc-500 text-sm mb-6">Escolha o dia do treino que você vai realizar.</p>
+          <p className="text-zinc-300 text-sm mb-6">Escolha o dia do treino que você vai realizar.</p>
           <div className="space-y-3">
             {workout.days.map(d => {
               const total = d.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
@@ -380,11 +380,11 @@ export default function Treino() {
                   className="w-full bg-[#1a1a1a] border border-zinc-800 hover:border-zinc-600 rounded-2xl p-5 text-left transition-all group">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs text-zinc-600 uppercase tracking-widest mb-1">Dia {d.dayId}</p>
+                      <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Dia {d.dayId}</p>
                       <p className="font-heading font-black text-xl uppercase text-white">{d.label}</p>
-                      <p className="text-zinc-500 text-xs mt-1">{total} exercícios</p>
+                      <p className="text-zinc-300 text-xs mt-1">{total} exercícios</p>
                     </div>
-                    <svg className="w-5 h-5 text-zinc-700 group-hover:text-zinc-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -430,16 +430,16 @@ export default function Treino() {
               </div>
               <div>
                 <h3 className="font-heading font-black text-xl uppercase text-white leading-none">Encerrar treino</h3>
-                <p className="text-zinc-500 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
+                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
               </div>
             </div>
-            <p className="text-zinc-400 text-sm mb-6">
+            <p className="text-zinc-300 text-sm mb-6">
               Os dados das séries completadas serão salvos. Séries não marcadas como feitas serão ignoradas.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowFinishModal(false)}
-                className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+                className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
               >
                 Continuar
               </button>
@@ -460,7 +460,7 @@ export default function Treino() {
               >
                 Cancelar treino sem salvar
               </button>
-              <p className="text-zinc-600 text-[11px] text-center mt-1">
+              <p className="text-zinc-400 text-[11px] text-center mt-1">
                 O treino não ficará no histórico
               </p>
             </div>
@@ -480,16 +480,16 @@ export default function Treino() {
               </div>
               <div>
                 <h3 className="font-heading font-black text-xl uppercase text-white leading-none">Cancelar treino</h3>
-                <p className="text-zinc-500 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
+                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
               </div>
             </div>
-            <p className="text-zinc-400 text-sm mb-6">
+            <p className="text-zinc-300 text-sm mb-6">
               Todo o progresso será perdido. O treino não será salvo no histórico.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCancelConfirm(false)}
-                className="flex-1 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+                className="flex-1 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
               >
                 Manter treino
               </button>
@@ -509,7 +509,7 @@ export default function Treino() {
         <div className="flex items-center justify-between mb-5">
           <button
             onClick={() => router.push('/')}
-            className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest transition-colors"
+            className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -535,24 +535,24 @@ export default function Treino() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-900/20 rounded-full blur-3xl pointer-events-none" />
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0 mr-6">
-              <p className="text-xs text-zinc-500 uppercase tracking-widest mb-2">Treino de hoje · {day.dayId}</p>
+              <p className="text-xs text-zinc-400 uppercase tracking-widest mb-2">Treino de hoje · {day.dayId}</p>
               <h1 className="font-heading font-black text-3xl md:text-4xl uppercase text-white leading-tight">
                 {day.exercises.map(mg => (muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup).toUpperCase()).join(' · ')}
               </h1>
               <div className="flex items-center gap-5 mt-3">
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <span className="flex items-center gap-1.5 text-xs text-zinc-300">
                   <svg className="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/>
                   </svg>
                   {total} exercícios
                 </span>
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <span className="flex items-center gap-1.5 text-xs text-zinc-300">
                   <svg className="w-3.5 h-3.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   {totalSets} séries
                 </span>
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <span className="flex items-center gap-1.5 text-xs text-zinc-300">
                   <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -592,7 +592,7 @@ export default function Treino() {
                   }
                 </span>
                 <span className={`text-[10px] text-center leading-tight w-full line-clamp-2 ${
-                  active ? 'text-white' : complete ? 'text-green-400' : 'text-zinc-500'
+                  active ? 'text-white' : complete ? 'text-green-400' : 'text-zinc-300'
                 }`}>{e.name}</span>
               </button>
             )
@@ -644,11 +644,11 @@ export default function Treino() {
                           </svg>
                         )}
                       </div>
-                      <p className={`text-[10px] uppercase tracking-wide mt-0.5 ${complete ? 'text-green-800' : 'text-zinc-600'}`}>
+                      <p className={`text-[10px] uppercase tracking-wide mt-0.5 ${complete ? 'text-green-700' : 'text-zinc-400'}`}>
                         {(muscleGroupLabels[e.muscleGroup] || e.muscleGroup).toUpperCase()} · {d}/{t} séries
                       </p>
                       {lastWeightLabel && (
-                        <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{lastWeightLabel}</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5 truncate">{lastWeightLabel}</p>
                       )}
                     </div>
                   </div>
@@ -661,7 +661,7 @@ export default function Treino() {
           <div className="flex-1 bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6 flex flex-col">
             {/* Header do exercício */}
             <div className="mb-5">
-              <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">
+              <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">
                 {(muscleGroupLabels[ex.muscleGroup] || ex.muscleGroup).toUpperCase()}
                 {ex.repeticoes ? ` · Alvo ${ex.repeticoes} reps` : ''}
               </p>
@@ -690,10 +690,10 @@ export default function Treino() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
                     Último treino · {hist.lastDate ? new Date(hist.lastDate + 'T12:00:00').toLocaleDateString('pt-BR') : ''}
                   </p>
-                  <p className="text-sm text-zinc-300">{lastSetsLabel}</p>
+                  <p className="text-sm text-zinc-200">{lastSetsLabel}</p>
                 </div>
               </div>
             )}
@@ -701,17 +701,17 @@ export default function Treino() {
             {/* Tabela de séries */}
             <div className="flex-1">
               <div className="grid grid-cols-[40px_1fr_1fr_48px] gap-3 mb-3">
-                <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Set</span>
-                <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Carga (kg)</span>
-                <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Reps</span>
-                <span className="text-[10px] text-zinc-600 uppercase tracking-widest text-right">Feito</span>
+                <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Set</span>
+                <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Carga (kg)</span>
+                <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Reps</span>
+                <span className="text-[10px] text-zinc-400 uppercase tracking-widest text-right">Feito</span>
               </div>
               <div className="space-y-2">
                 {sets.map((set, si) => {
                   const isNewPR = set.done && hist.pr && parseFloat(set.carga) > hist.pr
                   return (
                     <div key={si} className={`grid grid-cols-[40px_1fr_1fr_48px] gap-3 items-center py-2 border-t border-zinc-800 ${set.done ? 'opacity-60' : ''}`}>
-                      <span className="font-heading font-bold text-zinc-500 text-sm">
+                      <span className="font-heading font-bold text-zinc-400 text-sm">
                         {String(si + 1).padStart(2, '0')}
                       </span>
                       <div className="relative">
@@ -762,7 +762,7 @@ export default function Treino() {
               <button
                 onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}
                 disabled={currentIdx === 0}
-                className="px-4 md:px-5 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-heading font-bold uppercase tracking-widest text-xs rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-4 md:px-5 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-heading font-bold uppercase tracking-widest text-xs rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Anterior
               </button>

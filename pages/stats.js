@@ -132,14 +132,14 @@ export default function Stats() {
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
 
         <div>
-          <p className="text-xs text-zinc-600 uppercase tracking-widest mb-1">Desempenho</p>
+          <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Desempenho</p>
           <h1 className="font-heading font-black text-4xl uppercase text-white">Estatísticas</h1>
         </div>
 
         {isEmpty ? (
           <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-10 text-center">
-            <p className="text-zinc-500 text-sm mb-1">Nenhum treino registrado ainda.</p>
-            <p className="text-zinc-600 text-xs">Conclua seu primeiro treino para ver as estatísticas.</p>
+            <p className="text-zinc-300 text-sm mb-1">Nenhum treino registrado ainda.</p>
+            <p className="text-zinc-400 text-xs">Conclua seu primeiro treino para ver as estatísticas.</p>
           </div>
         ) : (
           <>
@@ -160,7 +160,7 @@ export default function Stats() {
                 <div className="flex gap-1 bg-zinc-900 rounded-lg p-1">
                   {['week', 'month'].map(p => (
                     <button key={p} onClick={() => setPeriod(p)}
-                      className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${period === p ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                      className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${period === p ? 'bg-red-600 text-white' : 'text-zinc-300 hover:text-white'}`}
                     >
                       {p === 'week' ? 'Semana' : 'Mês'}
                     </button>
@@ -180,18 +180,18 @@ export default function Stats() {
             {/* Frequência semanal */}
             <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
               <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Frequência semanal</h2>
-              <p className="text-xs text-zinc-600 mb-4">Últimas 8 semanas</p>
+              <p className="text-xs text-zinc-400 mb-4">Últimas 8 semanas</p>
               <div className="flex items-end gap-1.5 h-24">
                 {weeks.map((w, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[9px] text-zinc-500 h-3">{w.count > 0 ? w.count : ''}</span>
+                    <span className="text-[9px] text-zinc-400 h-3">{w.count > 0 ? w.count : ''}</span>
                     <div className="w-full rounded-sm transition-all duration-500"
                       style={{
                         height: `${Math.max((w.count / maxWeek) * 64, w.count > 0 ? 6 : 0)}px`,
                         background: w.count >= 4 ? '#16a34a' : w.count >= 2 ? '#dc2626' : w.count > 0 ? '#991b1b' : '#27272a',
                       }}
                     />
-                    <span className="text-[8px] text-zinc-700 text-center leading-tight">{w.label}</span>
+                    <span className="text-[8px] text-zinc-400 text-center leading-tight">{w.label}</span>
                   </div>
                 ))}
               </div>
@@ -210,8 +210,8 @@ export default function Stats() {
                   {muscleList.slice(0, 8).map(([mg, count]) => (
                     <div key={mg}>
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-sm text-zinc-300">{muscleGroupLabels[mg] || mg}</span>
-                        <span className="text-xs text-zinc-500">{count}×</span>
+                        <span className="text-sm text-zinc-200">{muscleGroupLabels[mg] || mg}</span>
+                        <span className="text-xs text-zinc-400">{count}×</span>
                       </div>
                       <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                         <div className="h-1.5 bg-red-600 rounded-full transition-all duration-700"
@@ -227,15 +227,15 @@ export default function Stats() {
             {prList.length > 0 && (
               <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
                 <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Recordes pessoais</h2>
-                <p className="text-xs text-zinc-600 mb-4">Maior carga registrada por exercício</p>
+                <p className="text-xs text-zinc-400 mb-4">Maior carga registrada por exercício</p>
                 <div className="space-y-0.5">
                   {prList.map(([name, weight], i) => (
                     <div key={name} className="flex items-center justify-between py-3 border-b border-zinc-800/60 last:border-0">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className={`w-5 text-right text-xs font-mono flex-shrink-0 ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-zinc-400' : i === 2 ? 'text-amber-700' : 'text-zinc-700'}`}>
+                        <span className={`w-5 text-right text-xs font-mono flex-shrink-0 ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-500'}`}>
                           {i + 1}
                         </span>
-                        <span className="text-sm text-zinc-300 truncate">{name}</span>
+                        <span className="text-sm text-zinc-200 truncate">{name}</span>
                       </div>
                       <span className="font-heading font-black text-xl text-red-400 flex-shrink-0 ml-3">{weight}kg</span>
                     </div>
@@ -253,9 +253,9 @@ export default function Stats() {
 function KpiCard({ label, value, sub, accent }) {
   return (
     <div className={`bg-[#1a1a1a] border rounded-2xl p-4 ${accent ? 'border-red-900/50' : 'border-zinc-800'}`}>
-      <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">{label}</p>
       <p className={`font-heading font-black text-3xl leading-none ${accent ? 'text-red-400' : 'text-white'}`}>{value}</p>
-      {sub && <p className="text-[11px] text-zinc-600 mt-1.5">{sub}</p>}
+      {sub && <p className="text-[11px] text-zinc-400 mt-1.5">{sub}</p>}
     </div>
   )
 }
@@ -263,7 +263,7 @@ function KpiCard({ label, value, sub, accent }) {
 function PeriodCard({ label, value }) {
   return (
     <div className="bg-zinc-900/60 rounded-xl p-3">
-      <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">{label}</p>
       <p className="font-heading font-black text-xl text-white leading-none">{value}</p>
     </div>
   )
@@ -273,7 +273,7 @@ function LegendDot({ color, label }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
-      <span className="text-[10px] text-zinc-600">{label}</span>
+      <span className="text-[10px] text-zinc-400">{label}</span>
     </div>
   )
 }
