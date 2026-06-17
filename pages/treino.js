@@ -409,7 +409,7 @@ export default function Treino() {
     : null
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f]">
+    <div className="min-h-screen bg-[#0f0f0f]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {restSeconds && (
         <RestTimerOverlay seconds={restSeconds} onDone={() => setRestSeconds(null)} />
       )}

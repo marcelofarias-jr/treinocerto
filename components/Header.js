@@ -62,7 +62,10 @@ export default function Header() {
   return (
     <>
       {/* Top header — hidden on mobile when on treino page */}
-      <header className={`bg-[#0f0f0f] border-b border-zinc-800 sticky top-0 z-40 ${isTrainoAtivo ? "hidden md:block" : ""}`}>
+      <header
+        className={`bg-[#0f0f0f] border-b border-zinc-800 sticky top-0 z-40 ${isTrainoAtivo ? "hidden md:block" : ""}`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 md:gap-3">
             <div className="w-7 h-7 md:w-8 md:h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0">
