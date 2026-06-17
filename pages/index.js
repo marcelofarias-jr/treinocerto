@@ -2,11 +2,107 @@ import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { formatConfigs } from '../lib/workoutConfig'
+import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-function Calendar({ trainedDates }) {
+function fmt(s) {
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+function SessionModal({ session, onClose }) {
+  if (!session) return null
+
+  const dateLabel = new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  })
+
+  // Agrupa exercícios por grupo muscular, só com séries concluídas
+  const byGroup = {}
+  ;(session.exercisesData || []).forEach(ex => {
+    const doneSets = (ex.sets || []).filter(s => s.done && s.carga)
+    if (doneSets.length === 0) return
+    const group = muscleGroupLabels[ex.muscleGroup] || ex.muscleGroup || 'Outros'
+    if (!byGroup[group]) byGroup[group] = []
+    byGroup[group].push({ name: ex.name, sets: doneSets })
+  })
+
+  const hasData = Object.keys(byGroup).length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
+      <div className="absolute inset-0 bg-black/75" onClick={onClose} />
+      <div className="relative bg-[#1a1a1a] border border-zinc-700 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+
+        {/* Header */}
+        <div className="p-5 border-b border-zinc-800 flex-shrink-0">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] text-zinc-500 tracking-widest mb-1 capitalize">{dateLabel}</p>
+              <h3 className="font-heading font-black text-2xl uppercase text-white leading-tight">
+                {session.dayLabel || 'Treino'}
+              </h3>
+              {session.duration > 0 && (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-xs text-zinc-400">{fmt(session.duration)}</span>
+                </div>
+              )}
+            </div>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {!hasData ? (
+            <p className="text-zinc-500 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
+          ) : (
+            Object.entries(byGroup).map(([group, exercises]) => (
+              <div key={group}>
+                <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3">{group}</p>
+                <div className="space-y-4">
+                  {exercises.map((ex, ei) => (
+                    <div key={ei}>
+                      <p className="text-sm font-semibold text-white mb-2">{ex.name}</p>
+                      <div className="space-y-1">
+                        {ex.sets.map((set, si) => (
+                          <div key={si} className="flex items-center gap-3 text-xs text-zinc-400">
+                            <span className="w-6 font-heading font-bold text-zinc-600">{String(si + 1).padStart(2, '0')}</span>
+                            <span className="flex-1">
+                              {set.carga && <span className="text-white font-semibold">{set.carga} kg</span>}
+                              {set.carga && set.repeticoes && <span className="text-zinc-600 mx-1">×</span>}
+                              {set.repeticoes && <span>{set.repeticoes} reps</span>}
+                            </span>
+                            <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Calendar({ sessions, onDayClick }) {
   const [cursor, setCursor] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -18,26 +114,28 @@ function Calendar({ trainedDates }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const monthLabel = new Date(year, month).toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
 
+  // Mapeia data → sessão mais recente
+  const sessionsByDate = {}
+  sessions.forEach(s => {
+    if (!sessionsByDate[s.date] || s.id > sessionsByDate[s.date].id) {
+      sessionsByDate[s.date] = s
+    }
+  })
+
   const cells = [
     ...Array(firstWeekday).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => {
       const d = i + 1
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-      return { d, dateStr, trained: trainedDates.has(dateStr), isToday: dateStr === todayStr }
+      return { d, dateStr, session: sessionsByDate[dateStr] || null, isToday: dateStr === todayStr }
     }),
   ]
 
   function prev() {
-    setCursor(c => ({
-      year: c.month === 0 ? c.year - 1 : c.year,
-      month: c.month === 0 ? 11 : c.month - 1,
-    }))
+    setCursor(c => ({ year: c.month === 0 ? c.year - 1 : c.year, month: c.month === 0 ? 11 : c.month - 1 }))
   }
   function next() {
-    setCursor(c => ({
-      year: c.month === 11 ? c.year + 1 : c.year,
-      month: c.month === 11 ? 0 : c.month + 1,
-    }))
+    setCursor(c => ({ year: c.month === 11 ? c.year + 1 : c.year, month: c.month === 11 ? 0 : c.month + 1 }))
   }
 
   return (
@@ -64,13 +162,16 @@ function Calendar({ trainedDates }) {
         {cells.map((cell, i) => (
           <div key={i} className="flex items-center justify-center h-9">
             {cell && (
-              <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all
-                ${cell.trained ? 'bg-red-600 text-white font-bold' : ''}
-                ${cell.isToday && !cell.trained ? 'ring-2 ring-red-500 text-red-400' : ''}
-                ${!cell.trained && !cell.isToday ? 'text-zinc-500' : ''}
-              `}>
+              <button
+                onClick={() => cell.session && onDayClick(cell.session)}
+                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-all
+                  ${cell.session ? 'bg-red-600 text-white font-bold hover:bg-red-500 cursor-pointer' : 'cursor-default'}
+                  ${cell.isToday && !cell.session ? 'ring-2 ring-red-500 text-red-400' : ''}
+                  ${!cell.session && !cell.isToday ? 'text-zinc-500' : ''}
+                `}
+              >
                 {cell.d}
-              </span>
+              </button>
             )}
           </div>
         ))}
@@ -83,6 +184,7 @@ function Calendar({ trainedDates }) {
         <span className="flex items-center gap-2 text-xs text-zinc-600">
           <span className="w-3 h-3 rounded-full ring-2 ring-red-500 inline-block" /> Hoje
         </span>
+        <span className="text-xs text-zinc-700">Toque para ver detalhes</span>
       </div>
     </div>
   )
@@ -92,9 +194,10 @@ export default function Home() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [workout, setWorkout] = useState(null)
-  const [trainedDates, setTrainedDates] = useState(new Set())
+  const [allSessions, setAllSessions] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [activeWorkout, setActiveWorkout] = useState(false)
+  const [selectedSession, setSelectedSession] = useState(null)
 
   useEffect(() => {
     setActiveWorkout(!!localStorage.getItem('workoutStartTime'))
@@ -109,7 +212,7 @@ export default function Home() {
       const ws = Array.isArray(workouts) ? workouts : []
       const ss = Array.isArray(sessions) ? sessions : []
       if (ws.length > 0) setWorkout(ws[ws.length - 1])
-      setTrainedDates(new Set(ss.map(s => s.date)))
+      setAllSessions(ss)
       setLoadingData(false)
     })
   }, [session])
@@ -131,15 +234,9 @@ export default function Home() {
               <p className="text-zinc-600 text-[10px] uppercase tracking-widest">Workout Tracker</p>
             </div>
           </div>
-
-          <h1 className="font-heading font-black text-5xl uppercase leading-tight mb-2">
-            MONTE O TREINO.
-          </h1>
-          <h1 className="font-heading font-black text-5xl uppercase leading-tight text-red-500 mb-4">
-            LEVANTE PESADO.
-          </h1>
+          <h1 className="font-heading font-black text-5xl uppercase leading-tight mb-2">MONTE O TREINO.</h1>
+          <h1 className="font-heading font-black text-5xl uppercase leading-tight text-red-500 mb-4">LEVANTE PESADO.</h1>
           <p className="text-zinc-500 text-sm mb-8">Monte seu treino de hipertrofia e acompanhe sua evolução.</p>
-
           <button
             onClick={() => signIn('google', { callbackUrl: '/' })}
             className="w-full px-6 py-4 bg-red-600 hover:bg-red-700 text-white font-heading font-bold text-lg uppercase tracking-widest rounded-xl transition-colors"
@@ -156,6 +253,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
+      {selectedSession && (
+        <SessionModal session={selectedSession} onClose={() => setSelectedSession(null)} />
+      )}
+
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
 
         {/* Hero */}
@@ -209,9 +310,7 @@ export default function Home() {
               <button
                 onClick={() => router.push('/treino')}
                 className={`flex-1 py-3 font-heading font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2 ${
-                  activeWorkout
-                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
+                  activeWorkout ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-red-600 hover:bg-red-700 text-white'
                 }`}
               >
                 {activeWorkout && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
@@ -230,10 +329,7 @@ export default function Home() {
         ) : (
           <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 text-center">
             <p className="text-zinc-500 text-sm mb-5">Você ainda não tem um treino criado.</p>
-            <Link
-              href="/dashboard"
-              className="inline-block px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors"
-            >
+            <Link href="/dashboard" className="inline-block px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
               Criar meu treino
             </Link>
           </div>
@@ -245,7 +341,7 @@ export default function Home() {
           {loadingData ? (
             <div className="h-52 animate-pulse bg-zinc-800/50 rounded-xl" />
           ) : (
-            <Calendar trainedDates={trainedDates} />
+            <Calendar sessions={allSessions} onDayClick={setSelectedSession} />
           )}
         </div>
 

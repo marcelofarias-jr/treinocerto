@@ -481,26 +481,45 @@ export default function Treino() {
             {flatEx.map((e, i) => {
               const { done: d, total: t } = getExProg(i)
               const active = i === currentIdx
+              const complete = d === t && t > 0
               const h = exerciseHistory[e.name]
               const lastWeights = h?.lastSets?.filter(s => s.carga).map(s => s.carga) || []
               const lastWeightLabel = lastWeights.length ? lastWeights.join(' · ') + ' kg' : null
               return (
                 <button key={i} onClick={() => setCurrentIdx(i)}
                   className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                    active ? 'bg-red-900/40 border-red-600' : 'bg-[#1a1a1a] border-zinc-800 hover:border-zinc-600'
+                    active ? 'bg-red-900/40 border-red-600'
+                    : complete ? 'bg-green-950/30 border-green-900 hover:border-green-700'
+                    : 'bg-[#1a1a1a] border-zinc-800 hover:border-zinc-600'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <span className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-xs font-black ${
-                      active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                      active ? 'bg-red-600 text-white'
+                      : complete ? 'bg-green-700 text-white'
+                      : 'bg-zinc-800 text-zinc-400'
                     }`}>
-                      {i + 1}
+                      {complete
+                        ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                        : i + 1
+                      }
                     </span>
-                    <div className="min-w-0">
-                      <p className={`text-sm font-medium truncate leading-snug ${active ? 'text-white' : 'text-zinc-300'}`}>
-                        {e.name}
-                      </p>
-                      <p className="text-[10px] text-zinc-600 uppercase tracking-wide mt-0.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className={`text-sm font-medium truncate leading-snug ${
+                          active ? 'text-white'
+                          : complete ? 'text-green-400'
+                          : 'text-zinc-300'
+                        }`}>
+                          {e.name}
+                        </p>
+                        {complete && !active && (
+                          <svg className="w-3 h-3 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <p className={`text-[10px] uppercase tracking-wide mt-0.5 ${complete ? 'text-green-800' : 'text-zinc-600'}`}>
                         {(muscleGroupLabels[e.muscleGroup] || e.muscleGroup).toUpperCase()} · {d}/{t} séries
                       </p>
                       {lastWeightLabel && (
