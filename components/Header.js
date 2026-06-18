@@ -3,6 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
+const ADMIN_EMAIL = 'marcelobfariasjr@gmail.com'
+
 const NAV = [
   {
     href: "/",
@@ -162,6 +164,15 @@ export default function Header() {
                 </Link>
               );
             })}
+            {session?.user?.email === ADMIN_EMAIL && (
+              <Link href="/admin/exercises"
+                className={`px-4 py-5 text-xs font-semibold uppercase tracking-widest border-b-2 transition-colors ${
+                  router.pathname === '/admin/exercises' ? "text-white border-red-500" : "text-red-500 border-transparent hover:text-red-400"
+                }`}
+              >
+                Admin
+              </Link>
+            )}
             <button
               onClick={() => signOut()}
               className="ml-4 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"

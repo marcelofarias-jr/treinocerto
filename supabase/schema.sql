@@ -29,3 +29,21 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(user_email, date);
+
+-- Exercícios customizados pelo usuário
+CREATE TABLE IF NOT EXISTS custom_exercises (
+  id BIGINT PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  muscle_group TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_exercises_user ON custom_exercises(user_email);
+
+-- Exercícios padrão ocultos (excluídos ou substituídos pelo admin)
+CREATE TABLE IF NOT EXISTS hidden_exercises (
+  name TEXT PRIMARY KEY,
+  muscle_group TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
