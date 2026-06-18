@@ -142,6 +142,7 @@ export default function Treino() {
   const router = useRouter()
 
   const [workout, setWorkout] = useState(null)
+  const [allSessions, setAllSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedDayId, setSelectedDayId] = useState(null)
   const [currentIdx, setCurrentIdx] = useState(0)
@@ -162,63 +163,60 @@ export default function Treino() {
   // Carrega o treino do usuário e restaura sessão ativa se houver
   useEffect(() => {
     if (!session) return
-    fetch(`/api/workouts?email=${session.user.email}`)
-      .then(r => r.json())
-      .then(ws => {
-        const w = ws.length > 0 ? ws[ws.length - 1] : null
-        setWorkout(w)
-        setLoading(false)
+    Promise.all([
+      fetch(`/api/workouts?email=${session.user.email}`).then(r => r.json()),
+      fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json()),
+    ]).then(([ws, ss]) => {
+      const w = ws.length > 0 ? ws[ws.length - 1] : null
+      const sessions = Array.isArray(ss) ? ss : []
+      setWorkout(w)
+      setAllSessions(sessions)
+      setLoading(false)
 
-        if (!w) return
-        const startTime = localStorage.getItem('workoutStartTime')
-        const savedDayId = localStorage.getItem('workoutDayId')
-        if (!startTime || !savedDayId) return
+      if (!w) return
+      const startTime = localStorage.getItem('workoutStartTime')
+      const savedDayId = localStorage.getItem('workoutDayId')
+      if (!startTime || !savedDayId) return
 
-        // Verifica se o dayId ainda existe no treino atual
-        if (!w.days.some(d => d.dayId === savedDayId)) { clearWorkoutStorage(); return }
+      // Verifica se o dayId ainda existe no treino atual
+      if (!w.days.some(d => d.dayId === savedDayId)) { clearWorkoutStorage(); return }
 
-        setSelectedDayId(savedDayId)
-        setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
+      setSelectedDayId(savedDayId)
+      setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
 
-        // Tenta restaurar setsData do localStorage
-        let restoredSets = null
-        try {
-          const saved = localStorage.getItem('workoutSetsData')
-          if (saved) restoredSets = JSON.parse(saved)
-        } catch (_) {}
+      // Tenta restaurar setsData do localStorage
+      let restoredSets = null
+      try {
+        const saved = localStorage.getItem('workoutSetsData')
+        if (saved) restoredSets = JSON.parse(saved)
+      } catch (_) {}
 
-        const hasRestoredSets = restoredSets && Object.keys(restoredSets).length > 0
+      const hasRestoredSets = restoredSets && Object.keys(restoredSets).length > 0
+      const history = buildHistory(sessions)
+      setExerciseHistory(history)
 
-        // Busca histórico e, se necessário, reinicializa os sets a partir da configuração do treino
-        fetch(`/api/sessions?email=${session.user.email}`)
-          .then(r => r.json())
-          .then(sessions => {
-            const history = buildHistory(sessions)
-            setExerciseHistory(history)
-
-            if (hasRestoredSets) {
-              setSetsData(restoredSets)
-            } else {
-              // setsData não estava salvo — inicializa a partir do treino + histórico
-              const d = w.days.find(d => d.dayId === savedDayId)
-              const exs = d.exercises.flatMap(mg =>
-                mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
-              )
-              const init = {}
-              exs.forEach((ex, i) => {
-                const n = Math.max(1, parseInt(ex.series) || 3)
-                const prev = history[ex.name]?.lastSets || []
-                init[i] = Array.from({ length: n }, (_, si) => ({
-                  carga: prev[si]?.carga || ex.carga || '',
-                  repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
-                  done: false,
-                }))
-              })
-              setSetsData(init)
-              localStorage.setItem('workoutSetsData', JSON.stringify(init))
-            }
-          })
-      })
+      if (hasRestoredSets) {
+        setSetsData(restoredSets)
+      } else {
+        // setsData não estava salvo — inicializa a partir do treino + histórico
+        const d = w.days.find(d => d.dayId === savedDayId)
+        const exs = d.exercises.flatMap(mg =>
+          mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
+        )
+        const init = {}
+        exs.forEach((ex, i) => {
+          const n = Math.max(1, parseInt(ex.series) || 3)
+          const prev = history[ex.name]?.lastSets || []
+          init[i] = Array.from({ length: n }, (_, si) => ({
+            carga: prev[si]?.carga || ex.carga || '',
+            repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
+            done: false,
+          }))
+        })
+        setSetsData(init)
+        localStorage.setItem('workoutSetsData', JSON.stringify(init))
+      }
+    })
   }, [session])
 
   // Timer baseado no timestamp real — não para ao sair da aba ou bloquear o celular
@@ -260,6 +258,17 @@ export default function Treino() {
     )
   }
 
+  function getRecommendedDayId(workout, sessions) {
+    if (!workout?.days?.length) return null
+    const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id)
+    const lastWithDay = sorted.find(s => s.dayId)
+    if (!lastWithDay) return workout.days[0]?.dayId
+    const lastIdx = workout.days.findIndex(d => d.dayId === lastWithDay.dayId)
+    if (lastIdx === -1) return workout.days[0]?.dayId
+    return workout.days[(lastIdx + 1) % workout.days.length].dayId
+  }
+
+  const recommendedDayId = getRecommendedDayId(workout, allSessions)
   const day = selectedDayId != null ? workout.days.find(d => d.dayId === selectedDayId) : null
   const flatEx = day
     ? day.exercises.flatMap(mg =>
@@ -576,16 +585,28 @@ export default function Treino() {
           <div className="space-y-3">
             {workout.days.map(d => {
               const total = d.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
+              const isRecommended = d.dayId === recommendedDayId
               return (
                 <button key={d.dayId} onClick={() => setPreviewDay(d)}
-                  className="w-full bg-[#1a1a1a] border border-zinc-800 hover:border-zinc-600 rounded-2xl p-5 text-left transition-all group">
+                  className={`w-full border rounded-2xl p-5 text-left transition-all group relative ${
+                    isRecommended
+                      ? 'bg-red-950/20 border-red-700 hover:border-red-500'
+                      : 'bg-[#1a1a1a] border-zinc-800 hover:border-zinc-600'
+                  }`}>
+                  {isRecommended && (
+                    <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 bg-red-600 text-white rounded-full uppercase tracking-widest">
+                      Hoje
+                    </span>
+                  )}
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Dia {d.dayId}</p>
+                      <p className={`text-xs uppercase tracking-widest mb-1 ${isRecommended ? 'text-red-400' : 'text-zinc-400'}`}>
+                        Dia {d.dayId}
+                      </p>
                       <p className="font-heading font-black text-xl uppercase text-white">{d.label}</p>
                       <p className="text-zinc-300 text-xs mt-1">{total} exercícios</p>
                     </div>
-                    <svg className="w-5 h-5 text-zinc-500 group-hover:text-zinc-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-5 h-5 transition-colors flex-shrink-0 ml-12 ${isRecommended ? 'text-red-500 group-hover:text-red-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>

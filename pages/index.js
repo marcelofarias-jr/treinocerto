@@ -278,7 +278,17 @@ export default function Home() {
   const streak = calcStreak(allSessions)
   const totalSessions = allSessions.length
 
-  function getRestAdvice(streak) {
+  function getRecommendedDay(workout, sessions) {
+  if (!workout?.days?.length) return null
+  const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id)
+  const lastWithDay = sorted.find(s => s.dayId)
+  if (!lastWithDay) return workout.days[0]
+  const lastIdx = workout.days.findIndex(d => d.dayId === lastWithDay.dayId)
+  if (lastIdx === -1) return workout.days[0]
+  return workout.days[(lastIdx + 1) % workout.days.length]
+}
+
+function getRestAdvice(streak) {
     if (streak >= 6) return {
       level: 'critical',
       icon: '🛑',
@@ -310,6 +320,7 @@ export default function Home() {
   }
 
   const restAdvice = getRestAdvice(streak)
+  const recommendedDay = !loadingData && workout ? getRecommendedDay(workout, allSessions) : null
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -394,6 +405,18 @@ export default function Home() {
                 Ver todos →
               </Link>
             </div>
+
+            {recommendedDay && !activeWorkout && (
+              <div className="flex items-center gap-3 mb-4 p-3 bg-[#232323] border border-zinc-800 rounded-xl">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-0.5">Recomendado hoje</p>
+                  <p className="font-heading font-bold text-white text-sm uppercase truncate">{recommendedDay.label}</p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-1 bg-red-600/20 border border-red-700/50 text-red-400 rounded-full uppercase tracking-widest flex-shrink-0">
+                  Dia {recommendedDay.dayId}
+                </span>
+              </div>
+            )}
 
             {activeWorkout && (
               <div className="flex items-start gap-3 p-3 bg-amber-900/20 border border-amber-800 rounded-xl mb-4">
