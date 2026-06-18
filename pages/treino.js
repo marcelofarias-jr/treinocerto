@@ -129,6 +129,8 @@ export default function Treino() {
   const [exerciseHistory, setExerciseHistory] = useState({})
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [previewDay, setPreviewDay] = useState(null)
+  const [viewOnly, setViewOnly] = useState(false)
   const listRef = useRef(null)
 
   // Carrega o treino do usuário e restaura sessão ativa se houver
@@ -271,6 +273,32 @@ export default function Treino() {
     localStorage.setItem('workoutSetsData', JSON.stringify(init))
   }
 
+  async function viewDay(dayId) {
+    const d = workout.days.find(d => d.dayId === dayId)
+    const exs = d.exercises.flatMap(mg =>
+      mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
+    )
+    const allSessions = await fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json())
+    const history = buildHistory(allSessions)
+    setExerciseHistory(history)
+
+    const init = {}
+    exs.forEach((ex, i) => {
+      const n = Math.max(1, parseInt(ex.series) || 3)
+      const prev = history[ex.name]?.lastSets || []
+      init[i] = Array.from({ length: n }, (_, si) => ({
+        carga: prev[si]?.carga || ex.carga || '',
+        repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
+        done: prev[si]?.done || false,
+      }))
+    })
+
+    setSetsData(init)
+    setSelectedDayId(dayId)
+    setCurrentIdx(0)
+    setViewOnly(true)
+  }
+
   function updateSet(ei, si, field, value) {
     setSetsData(prev => {
       const sets = [...(prev[ei] || [])]
@@ -376,7 +404,7 @@ export default function Treino() {
             {workout.days.map(d => {
               const total = d.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
               return (
-                <button key={d.dayId} onClick={() => startDay(d.dayId)}
+                <button key={d.dayId} onClick={() => setPreviewDay(d)}
                   className="w-full bg-[#1a1a1a] border border-zinc-800 hover:border-zinc-600 rounded-2xl p-5 text-left transition-all group">
                   <div className="flex items-center justify-between">
                     <div>
@@ -393,6 +421,76 @@ export default function Treino() {
             })}
           </div>
         </div>
+
+        {/* Modal de prévia do dia */}
+        {previewDay && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
+            <div className="absolute inset-0 bg-black/75" onClick={() => setPreviewDay(null)} />
+            <div className="relative bg-[#1a1a1a] border border-zinc-700 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+
+              {/* Header */}
+              <div className="p-5 border-b border-zinc-800 flex-shrink-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest mb-1">Dia {previewDay.dayId}</p>
+                    <h3 className="font-heading font-black text-2xl uppercase text-white leading-tight">{previewDay.label}</h3>
+                    <p className="text-zinc-400 text-xs mt-1">
+                      {previewDay.exercises.reduce((a, mg) => a + mg.exercises.length, 0)} exercícios
+                    </p>
+                  </div>
+                  <button onClick={() => setPreviewDay(null)} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista de exercícios */}
+              <div className="overflow-y-auto flex-1 p-5 space-y-4">
+                {previewDay.exercises.map(mg => {
+                  const exList = mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
+                  return (
+                    <div key={mg.muscleGroup}>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                        {muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup}
+                      </p>
+                      <div className="space-y-1.5">
+                        {exList.map((ex, i) => (
+                          <div key={i} className="flex items-center gap-3 py-1.5 border-b border-zinc-800/50 last:border-0">
+                            <span className="text-xs font-mono text-zinc-600 w-4 text-right flex-shrink-0">{i + 1}</span>
+                            <span className="text-sm text-zinc-200 flex-1">{ex.name}</span>
+                            {(ex.series || ex.repeticoes) && (
+                              <span className="text-xs text-zinc-500 flex-shrink-0">
+                                {ex.series && `${ex.series}×`}{ex.repeticoes && `${ex.repeticoes}`}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Ações */}
+              <div className="p-5 border-t border-zinc-800 flex-shrink-0 flex gap-3">
+                <button
+                  onClick={() => { const id = previewDay.dayId; setPreviewDay(null); viewDay(id) }}
+                  className="flex-1 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+                >
+                  Só visualizar
+                </button>
+                <button
+                  onClick={() => { setPreviewDay(null); startDay(previewDay.dayId) }}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors"
+                >
+                  Iniciar treino
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -508,7 +606,7 @@ export default function Treino() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-5">
           <button
-            onClick={() => router.push('/')}
+            onClick={() => { setSelectedDayId(null); setViewOnly(false); setSetsData({}) }}
             className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -517,16 +615,32 @@ export default function Treino() {
             Voltar
           </button>
           <div className="flex items-center gap-3">
-            <WorkoutTimer seconds={elapsed} />
-            <button
-              onClick={() => setShowFinishModal(true)}
-              className="flex items-center gap-2 px-4 py-1.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-xs rounded-lg transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-              Encerrar
-            </button>
+            {viewOnly ? (
+              <>
+                <span className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-400 font-semibold uppercase tracking-widest">
+                  Visualizando
+                </span>
+                <button
+                  onClick={() => { setViewOnly(false); startDay(day.dayId) }}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest text-xs rounded-lg transition-colors"
+                >
+                  Iniciar treino
+                </button>
+              </>
+            ) : (
+              <>
+                <WorkoutTimer seconds={elapsed} />
+                <button
+                  onClick={() => setShowFinishModal(true)}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-xs rounded-lg transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Encerrar
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -720,7 +834,7 @@ export default function Treino() {
                           min="0"
                           placeholder="0"
                           value={set.carga}
-                          disabled={set.done}
+                          disabled={set.done || viewOnly}
                           onChange={e => updateSet(currentIdx, si, 'carga', e.target.value)}
                           className="w-full disabled:opacity-50 disabled:cursor-not-allowed"
                         />
@@ -732,14 +846,14 @@ export default function Treino() {
                         type="text"
                         placeholder={ex.repeticoes || 'Reps'}
                         value={set.repeticoes}
-                        disabled={set.done}
+                        disabled={set.done || viewOnly}
                         onChange={e => updateSet(currentIdx, si, 'repeticoes', e.target.value)}
                         className="disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <div className="flex justify-end">
                         <button
-                          onClick={() => markDone(currentIdx, si)}
-                          disabled={set.done}
+                          onClick={() => !viewOnly && markDone(currentIdx, si)}
+                          disabled={set.done || viewOnly}
                           className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-all disabled:cursor-not-allowed ${
                             set.done ? 'bg-red-600 border-red-600' : 'border-zinc-700 hover:border-red-500 hover:bg-red-600/10'
                           }`}
@@ -766,7 +880,21 @@ export default function Treino() {
               >
                 Anterior
               </button>
-              {isLast ? (
+              {viewOnly ? (
+                isLast ? (
+                  <span className="text-xs text-zinc-500 uppercase tracking-widest">Fim da lista</span>
+                ) : (
+                  <button
+                    onClick={() => setCurrentIdx(i => Math.min(flatEx.length - 1, i + 1))}
+                    className="px-5 md:px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors flex items-center gap-2"
+                  >
+                    Próximo
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )
+              ) : isLast ? (
                 <button
                   onClick={finish}
                   disabled={finishing}

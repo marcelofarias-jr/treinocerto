@@ -257,6 +257,7 @@ export default function Home() {
         <SessionModal session={selectedSession} onClose={() => setSelectedSession(null)} />
       )}
 
+
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
 
         {/* Hero */}
