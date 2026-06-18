@@ -150,7 +150,7 @@ export default function Treino() {
   const [restEndTime, setRestEndTime] = useState(null)
   const [restTotal, setRestTotal] = useState(60)
   const [finishing, setFinishing] = useState(false)
-  const [done, setDone] = useState(false)
+  const [summary, setSummary] = useState(null)
   const [exerciseHistory, setExerciseHistory] = useState({})
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -374,13 +374,41 @@ export default function Treino() {
     setFinishing(true)
     const start = localStorage.getItem('workoutStartTime')
     const finalElapsed = start ? Math.floor((Date.now() - parseInt(start)) / 1000) : elapsed
-    clearWorkoutStorage()
 
     const exercisesData = flatEx.map((ex, i) => ({
       name: ex.name,
       muscleGroup: ex.muscleGroup,
       sets: setsData[i] || [],
     }))
+
+    // Computa resumo antes de limpar o storage
+    let totalVolume = 0
+    let totalSetsCompleted = 0
+    let totalReps = 0
+    const exSummaries = flatEx.map((ex, i) => {
+      const hist = exerciseHistory[ex.name] || {}
+      const curSets  = (setsData[i] || []).filter(s => s.done)
+      const prevSets = (hist.lastSets || []).filter(s => s.done && s.carga)
+
+      const curMaxW  = curSets.length  ? Math.max(...curSets.map(s => parseFloat(s.carga) || 0))  : 0
+      const prevMaxW = prevSets.length ? Math.max(...prevSets.map(s => parseFloat(s.carga) || 0)) : 0
+      const curReps  = curSets.reduce((a, s)  => a + (parseInt(s.repeticoes) || 0), 0)
+      const prevReps = prevSets.reduce((a, s) => a + (parseInt(s.repeticoes) || 0), 0)
+      const volume   = curSets.reduce((a, s)  => a + (parseFloat(s.carga) || 0) * (parseInt(s.repeticoes) || 0), 0)
+
+      totalVolume       += volume
+      totalSetsCompleted += curSets.length
+      totalReps         += curReps
+
+      const isNewPR    = curMaxW > 0 && curMaxW > (hist.pr || 0)
+      const weightDiff = prevMaxW > 0 && curMaxW > 0 ? curMaxW - prevMaxW : null
+      const repsDiff   = prevReps > 0 && curReps  > 0 ? curReps  - prevReps  : null
+      const hasPrev    = prevSets.length > 0
+
+      return { name: ex.name, muscleGroup: ex.muscleGroup, curMaxW, prevMaxW, curReps, prevReps, isNewPR, weightDiff, repsDiff, hasPrev, setsCompleted: curSets.length }
+    }).filter(e => e.setsCompleted > 0)
+
+    clearWorkoutStorage()
 
     const today = new Date().toISOString().split('T')[0]
     await fetch('/api/sessions', {
@@ -396,27 +424,140 @@ export default function Treino() {
         exercisesData,
       }),
     })
-    setElapsed(finalElapsed)
+
+    setSummary({ duration: finalElapsed, totalVolume, totalSetsCompleted, totalReps, exSummaries })
     setFinishing(false)
-    setDone(true)
   }
 
-  /* ── Tela de conclusão ── */
-  if (done) {
+  /* ── Resumo pós-treino ── */
+  if (summary) {
+    const prs       = summary.exSummaries.filter(e => e.isNewPR)
+    const weightUp  = summary.exSummaries.filter(e => !e.isNewPR && e.weightDiff > 0)
+    const repsUp    = summary.exSummaries.filter(e => !e.isNewPR && e.weightDiff <= 0 && e.repsDiff > 0)
+    const unchanged = summary.exSummaries.filter(e => !e.isNewPR && !(e.weightDiff > 0) && !(e.repsDiff > 0) && e.hasPrev)
+    const noHistory = summary.exSummaries.filter(e => !e.hasPrev)
+
+    function fmtVol(kg) {
+      if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`
+      return `${Math.round(kg)}kg`
+    }
+
     return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
-        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 text-center max-w-sm w-full">
-          <div className="w-16 h-16 bg-green-900/40 border border-green-700 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
+      <div className="min-h-screen bg-[#0f0f0f]">
+        <div className="max-w-lg mx-auto px-4 py-8 pb-28 space-y-4">
+
+          {/* Hero */}
+          <div className="relative bg-[#1a1a1a] border border-green-900/50 rounded-2xl p-6 overflow-hidden text-center">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-green-700 via-green-500 to-green-700" />
+            <div className="w-14 h-14 bg-green-900/40 border border-green-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="font-heading font-black text-3xl uppercase text-white mb-1">Treino concluído!</h1>
+            <p className="text-zinc-400 text-sm">{day?.label} · {fmt(summary.duration)}</p>
           </div>
-          <h2 className="font-heading font-black text-3xl uppercase text-white mb-1">Treino concluído!</h2>
-          <p className="text-zinc-300 text-sm mb-1">Duração: <span className="text-white font-semibold">{fmt(elapsed)}</span></p>
-          <p className="text-zinc-300 text-sm mb-6">Ótimo trabalho. Continue assim!</p>
-          <button onClick={() => router.push('/')} className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
+
+          {/* KPIs rápidos */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl p-3 text-center">
+              <p className="font-heading font-black text-2xl text-white">{summary.totalSetsCompleted}</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">Séries</p>
+            </div>
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl p-3 text-center">
+              <p className="font-heading font-black text-2xl text-white">{summary.totalReps}</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">Reps</p>
+            </div>
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl p-3 text-center">
+              <p className="font-heading font-black text-2xl text-white">{fmtVol(summary.totalVolume)}</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">Volume</p>
+            </div>
+          </div>
+
+          {/* Novos PRs */}
+          {prs.length > 0 && (
+            <div className="bg-yellow-950/30 border border-yellow-700/50 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest mb-3">🏆 Novos recordes pessoais</p>
+              <div className="space-y-2">
+                {prs.map(e => (
+                  <div key={e.name} className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-200">{e.name}</span>
+                    <span className="font-heading font-black text-yellow-400 text-base">{e.curMaxW}kg</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Progressos */}
+          {(weightUp.length > 0 || repsUp.length > 0) && (
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mb-3">↑ Evolução</p>
+              <div className="space-y-2.5">
+                {weightUp.map(e => (
+                  <div key={e.name} className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-200 flex-1 truncate mr-3">{e.name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-zinc-500">{e.prevMaxW}kg</span>
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-sm font-semibold text-green-400">{e.curMaxW}kg</span>
+                      <span className="text-[10px] text-green-600 font-bold">+{e.weightDiff}kg</span>
+                    </div>
+                  </div>
+                ))}
+                {repsUp.map(e => (
+                  <div key={e.name} className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-200 flex-1 truncate mr-3">{e.name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-zinc-500">{e.prevReps} reps</span>
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-sm font-semibold text-green-400">{e.curReps} reps</span>
+                      <span className="text-[10px] text-green-600 font-bold">+{e.repsDiff}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mantidos / sem alteração */}
+          {unchanged.length > 0 && (
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">= Mantidos</p>
+              <div className="space-y-2">
+                {unchanged.map(e => (
+                  <div key={e.name} className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-300">{e.name}</span>
+                    <span className="text-xs text-zinc-500">{e.curMaxW > 0 ? `${e.curMaxW}kg` : `${e.curReps} reps`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sem histórico para comparar */}
+          {noHistory.length > 0 && (
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Primeiro registro</p>
+              <div className="space-y-2">
+                {noHistory.map(e => (
+                  <div key={e.name} className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-300">{e.name}</span>
+                    <span className="text-xs text-zinc-400">{e.curMaxW > 0 ? `${e.curMaxW}kg` : `${e.curReps} reps`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button onClick={() => router.push('/')} className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
             Voltar ao início
           </button>
+
         </div>
       </div>
     )
