@@ -20,8 +20,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   day_label TEXT,
   duration INT DEFAULT 0,
   exercises_data JSONB DEFAULT '[]',
+  notes TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migração: adicionar coluna notes em bases existentes
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(user_email, date);

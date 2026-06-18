@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { userEmail, date, workoutId, dayId, dayLabel, duration, exercisesData } = req.body
+    const { userEmail, date, workoutId, dayId, dayLabel, duration, exercisesData, notes } = req.body
     if (!userEmail || !date) return res.status(400).json({ error: 'userEmail and date required' })
 
     const { data, error } = await supabase
@@ -30,6 +30,7 @@ export default async function handler(req, res) {
         day_label: dayLabel,
         duration: duration || 0,
         exercises_data: exercisesData || [],
+        notes: notes || null,
       })
       .select()
       .single()
@@ -51,5 +52,6 @@ function normalizeSession(row) {
     dayLabel: row.day_label,
     duration: row.duration,
     exercisesData: row.exercises_data || [],
+    notes: row.notes || null,
   }
 }

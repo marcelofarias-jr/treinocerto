@@ -6,6 +6,25 @@ import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+function calcStreak(sessions) {
+  const dateSet = new Set(sessions.map(s => s.date))
+  const today = new Date().toISOString().split('T')[0]
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  const start = dateSet.has(today) ? today : dateSet.has(yesterdayStr) ? yesterdayStr : null
+  if (!start) return 0
+  let streak = 0
+  const cur = new Date(start + 'T12:00:00')
+  while (true) {
+    const d = cur.toISOString().split('T')[0]
+    if (!dateSet.has(d)) break
+    streak++
+    cur.setDate(cur.getDate() - 1)
+  }
+  return streak
+}
+
 function fmt(s) {
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -65,6 +84,12 @@ function SessionModal({ session, onClose }) {
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {session.notes && (
+            <div className="p-3 bg-zinc-800/50 rounded-xl border border-zinc-800">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Anotação</p>
+              <p className="text-sm text-zinc-200">{session.notes}</p>
+            </div>
+          )}
           {!hasData ? (
             <p className="text-zinc-300 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
           ) : (
@@ -250,6 +275,8 @@ export default function Home() {
 
   const firstName = session.user.name?.split(' ')[0] || session.user.email.split('@')[0]
   const formatConfig = workout ? formatConfigs[workout.format] : null
+  const streak = calcStreak(allSessions)
+  const totalSessions = allSessions.length
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -271,6 +298,30 @@ export default function Home() {
             BORA TREINAR?
           </p>
         </div>
+
+        {/* Streak + totais */}
+        {!loadingData && allSessions.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4 flex items-center gap-3">
+              <span className="text-3xl leading-none">🔥</span>
+              <div>
+                <p className="font-heading font-black text-2xl text-white leading-none">
+                  {streak > 0 ? streak : '—'}
+                </p>
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">
+                  {streak > 1 ? 'dias seguidos' : streak === 1 ? 'dia seguido' : 'sem sequência'}
+                </p>
+              </div>
+            </div>
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4 flex items-center gap-3">
+              <span className="text-3xl leading-none">💪</span>
+              <div>
+                <p className="font-heading font-black text-2xl text-white leading-none">{totalSessions}</p>
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">treinos no total</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Treino atual */}
         {loadingData ? (

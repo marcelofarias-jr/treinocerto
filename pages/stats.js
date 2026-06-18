@@ -1,6 +1,6 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { muscleGroupLabels } from '../lib/workoutConfig'
 
 function fmtDuration(s) {
@@ -42,6 +42,7 @@ export default function Stats() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('week')
+  const [selectedEx, setSelectedEx] = useState('')
 
   useEffect(() => {
     if (!session) return
@@ -49,6 +50,29 @@ export default function Stats() {
       .then(r => r.json())
       .then(data => { setSessions(Array.isArray(data) ? data : []); setLoading(false) })
   }, [session])
+
+  // Hooks devem vir antes de qualquer early return
+  const allExerciseNames = useMemo(() => {
+    const names = new Set(sessions.flatMap(s => (s.exercisesData || []).map(e => e.name)))
+    return [...names].sort()
+  }, [sessions])
+
+  const currentEx = selectedEx || allExerciseNames[0] || ''
+
+  const progression = useMemo(() => {
+    if (!currentEx) return []
+    return sessions
+      .filter(s => (s.exercisesData || []).some(e => e.name === currentEx))
+      .map(s => {
+        const ex = s.exercisesData.find(e => e.name === currentEx)
+        const doneSets = (ex?.sets || []).filter(set => set.done && set.carga)
+        const maxW = doneSets.length ? Math.max(...doneSets.map(set => parseFloat(set.carga) || 0)) : 0
+        const totalVol = doneSets.reduce((a, set) => a + (parseFloat(set.carga) || 0) * (parseInt(set.repeticoes) || 0), 0)
+        return { date: s.date, maxW, totalVol }
+      })
+      .filter(p => p.maxW > 0)
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [sessions, currentEx])
 
   if (status === 'loading' || loading) return (
     <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
@@ -88,17 +112,36 @@ export default function Stats() {
   const pExercises = pSessions.flatMap(s => s.exercisesData || []).length
   const pDuration  = pSessions.reduce((a, s) => a + (s.duration || 0), 0)
 
-  // ── PRs ──
+  // ── PRs (com data) ──
   const prs = {}
   sessions.forEach(s => {
     ;(s.exercisesData || []).forEach(e => {
       ;(e.sets || []).filter(set => set.done && set.carga).forEach(set => {
         const w = parseFloat(set.carga)
-        if (!prs[e.name] || w > prs[e.name]) prs[e.name] = w
+        if (!prs[e.name] || w > prs[e.name].weight) {
+          prs[e.name] = { weight: w, date: s.date }
+        }
       })
     })
   })
-  const prList = Object.entries(prs).sort((a, b) => b[1] - a[1])
+  const prList = Object.entries(prs)
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.weight - a.weight)
+
+  // ── Volume semanal por músculo ──
+  const weekStart = new Date()
+  weekStart.setDate(weekStart.getDate() - 6)
+  const weekStartStr = weekStart.toISOString().split('T')[0]
+  const weekSessions = sessions.filter(s => s.date >= weekStartStr)
+  const muscleWeekSets = {}
+  weekSessions.forEach(s => {
+    ;(s.exercisesData || []).forEach(e => {
+      const mg = e.muscleGroup || 'outros'
+      const done = (e.sets || []).filter(set => set.done).length
+      if (done > 0) muscleWeekSets[mg] = (muscleWeekSets[mg] || 0) + done
+    })
+  })
+  const muscleWeekList = Object.entries(muscleWeekSets).sort((a, b) => b[1] - a[1])
 
   // ── Grupos musculares ──
   const muscleCount = {}
@@ -202,6 +245,37 @@ export default function Stats() {
               </div>
             </div>
 
+            {/* Volume semanal por músculo */}
+            {muscleWeekList.length > 0 && (
+              <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
+                <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Volume semanal</h2>
+                <p className="text-xs text-zinc-400 mb-4">Séries por músculo nos últimos 7 dias · recomendado: 10–20/semana</p>
+                <div className="space-y-3">
+                  {muscleWeekList.map(([mg, count]) => {
+                    const pct = Math.min(100, Math.round((count / 20) * 100))
+                    const color = count >= 10 ? 'bg-green-600' : count >= 5 ? 'bg-yellow-600' : 'bg-red-700'
+                    const label = count >= 20 ? 'Ótimo' : count >= 10 ? 'Bom' : count >= 5 ? 'Pouco' : 'Baixo'
+                    const labelColor = count >= 10 ? 'text-green-500' : count >= 5 ? 'text-yellow-500' : 'text-red-500'
+                    return (
+                      <div key={mg}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm text-zinc-200">{muscleGroupLabels[mg] || mg}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold uppercase tracking-wide ${labelColor}`}>{label}</span>
+                            <span className="text-xs text-zinc-400 font-heading font-bold">{count} séries</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className={`h-1.5 ${color} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-zinc-600 mt-3">Baseado nas séries concluídas desta semana.</p>
+              </div>
+            )}
+
             {/* Grupos musculares */}
             {muscleList.length > 0 && (
               <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
@@ -223,19 +297,93 @@ export default function Stats() {
               </div>
             )}
 
+            {/* Progressão por exercício */}
+            {allExerciseNames.length > 0 && (
+              <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
+                <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Ganho de força</h2>
+                <p className="text-xs text-zinc-400 mb-4">Carga máxima por sessão ao longo do tempo</p>
+
+                {/* Seletor de exercício */}
+                <select
+                  value={currentEx}
+                  onChange={e => setSelectedEx(e.target.value)}
+                  className="w-full mb-5"
+                >
+                  {allExerciseNames.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+
+                {progression.length < 2 ? (
+                  <p className="text-zinc-500 text-xs text-center py-4">
+                    {progression.length === 0
+                      ? 'Nenhuma sessão registrada para este exercício.'
+                      : 'Faça pelo menos 2 sessões para ver a progressão.'}
+                  </p>
+                ) : (
+                  <>
+                    {/* Gráfico SVG */}
+                    <ProgressionChart data={progression} />
+
+                    {/* Tabela de histórico */}
+                    <div className="mt-4 space-y-0.5">
+                      {[...progression].reverse().slice(0, 8).map((p, i) => {
+                        const prev = progression[progression.length - 2 - i]
+                        const diff = prev ? p.maxW - prev.maxW : null
+                        return (
+                          <div key={p.date} className="flex items-center justify-between py-2 border-b border-zinc-800/60 last:border-0">
+                            <span className="text-xs text-zinc-400">
+                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <div className="flex items-center gap-3">
+                              {diff !== null && diff !== 0 && (
+                                <span className={`text-[10px] font-bold ${diff > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {diff > 0 ? `+${diff}` : diff}kg
+                                </span>
+                              )}
+                              <span className="font-heading font-black text-white text-base">{p.maxW}kg</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Resumo */}
+                    {(() => {
+                      const first = progression[0].maxW
+                      const last = progression[progression.length - 1].maxW
+                      const gain = last - first
+                      return gain !== 0 ? (
+                        <p className={`text-xs mt-3 pt-3 border-t border-zinc-800 ${gain > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {gain > 0 ? '↑' : '↓'} {Math.abs(gain)}kg desde a primeira sessão registrada
+                        </p>
+                      ) : null
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
+
             {/* PRs */}
             {prList.length > 0 && (
               <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
                 <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Recordes pessoais</h2>
                 <p className="text-xs text-zinc-400 mb-4">Maior carga registrada por exercício</p>
                 <div className="space-y-0.5">
-                  {prList.map(([name, weight], i) => (
+                  {prList.map(({ name, weight, date }, i) => (
                     <div key={name} className="flex items-center justify-between py-3 border-b border-zinc-800/60 last:border-0">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className={`w-5 text-right text-xs font-mono flex-shrink-0 ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-500'}`}>
                           {i + 1}
                         </span>
-                        <span className="text-sm text-zinc-200 truncate">{name}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm text-zinc-200 truncate">{name}</p>
+                          {date && (
+                            <p className="text-[10px] text-zinc-600">
+                              {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <span className="font-heading font-black text-xl text-red-400 flex-shrink-0 ml-3">{weight}kg</span>
                     </div>
@@ -247,6 +395,50 @@ export default function Stats() {
         )}
       </div>
     </div>
+  )
+}
+
+function ProgressionChart({ data }) {
+  const W = 320, H = 100, PAD = 16
+  const minW = Math.min(...data.map(d => d.maxW))
+  const maxW = Math.max(...data.map(d => d.maxW))
+  const range = maxW - minW || 1
+
+  const points = data.map((d, i) => {
+    const x = PAD + (i / (data.length - 1)) * (W - PAD * 2)
+    const y = H - PAD - ((d.maxW - minW) / range) * (H - PAD * 2)
+    return { x, y, ...d }
+  })
+
+  const polyline = points.map(p => `${p.x},${p.y}`).join(' ')
+  const area = `M${points[0].x},${H - PAD} ` +
+    points.map(p => `L${p.x},${p.y}`).join(' ') +
+    ` L${points[points.length - 1].x},${H - PAD} Z`
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 100 }}>
+      <defs>
+        <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#dc2626" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#dc2626" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#chartGrad)" />
+      <polyline points={polyline} fill="none" stroke="#dc2626" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3" fill="#dc2626" />
+      ))}
+      {/* Labels dos extremos */}
+      <text x={points[0].x} y={H - 2} textAnchor="middle" fontSize="8" fill="#52525b">
+        {new Date(points[0].date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      </text>
+      <text x={points[points.length - 1].x} y={H - 2} textAnchor="middle" fontSize="8" fill="#52525b">
+        {new Date(points[points.length - 1].date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      </text>
+      <text x={W - PAD} y={points[points.length - 1].y - 5} textAnchor="end" fontSize="9" fill="#f4f4f5" fontWeight="bold">
+        {maxW}kg
+      </text>
+    </svg>
   )
 }
 

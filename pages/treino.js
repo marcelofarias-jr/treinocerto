@@ -156,6 +156,7 @@ export default function Treino() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [previewDay, setPreviewDay] = useState(null)
   const [viewOnly, setViewOnly] = useState(false)
+  const [sessionNotes, setSessionNotes] = useState('')
   const listRef = useRef(null)
 
   // Carrega o treino do usuário e restaura sessão ativa se houver
@@ -422,6 +423,7 @@ export default function Treino() {
         dayLabel: day.label,
         duration: finalElapsed,
         exercisesData,
+        notes: sessionNotes.trim() || null,
       }),
     })
 
@@ -702,9 +704,16 @@ export default function Treino() {
                 <p className="text-zinc-400 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
               </div>
             </div>
-            <p className="text-zinc-300 text-sm mb-6">
+            <p className="text-zinc-300 text-sm mb-4">
               Os dados das séries completadas serão salvos. Séries não marcadas como feitas serão ignoradas.
             </p>
+            <textarea
+              value={sessionNotes}
+              onChange={e => setSessionNotes(e.target.value)}
+              placeholder="Anotação da sessão (opcional) — como você se sentiu, observações..."
+              rows={3}
+              className="w-full mb-5 resize-none"
+            />
             <div className="flex gap-3">
               <button
                 onClick={() => setShowFinishModal(false)}
@@ -991,11 +1000,29 @@ export default function Treino() {
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Carga (kg)</span>
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest text-right">Feito</span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-0">
                 {sets.map((set, si) => {
                   const isNewPR = set.done && hist.pr && parseFloat(set.carga) > hist.pr
+                  const prevSet = hist.lastSets?.[si]
+                  const prevHint = prevSet?.done
+                    ? [prevSet.carga && `${prevSet.carga}kg`, prevSet.repeticoes && `${prevSet.repeticoes} reps`].filter(Boolean).join(' × ')
+                    : null
+
+                  // Compara set concluído com o anterior
+                  let progressColor = ''
+                  if (set.done && prevSet?.done) {
+                    const curW = parseFloat(set.carga) || 0
+                    const prevW = parseFloat(prevSet.carga) || 0
+                    const curR = parseInt(set.repeticoes) || 0
+                    const prevR = parseInt(prevSet.repeticoes) || 0
+                    if (curW > prevW || (curW >= prevW && curR > prevR)) progressColor = 'border-l-2 border-l-green-600'
+                    else if (curW === prevW && curR === prevR) progressColor = 'border-l-2 border-l-zinc-600'
+                    else progressColor = 'border-l-2 border-l-red-700'
+                  }
+
                   return (
-                    <div key={si} className={`grid grid-cols-[32px_1fr_1fr_44px] gap-2 items-center py-2 border-t border-zinc-800 ${set.done ? 'opacity-60' : ''}`}>
+                    <div key={si} className="border-t border-zinc-800">
+                    <div className={`grid grid-cols-[32px_1fr_1fr_44px] gap-2 items-center py-2 pl-1 ${set.done ? `opacity-60 ${progressColor}` : ''}`}>
                       <span className="font-heading font-bold text-zinc-400 text-sm">
                         {String(si + 1).padStart(2, '0')}
                       </span>
@@ -1038,6 +1065,11 @@ export default function Treino() {
                           )}
                         </button>
                       </div>
+                    </div>
+                    {/* Hint do valor anterior — só em séries pendentes */}
+                    {!set.done && prevHint && (
+                      <p className="text-[10px] text-zinc-600 pl-9 pb-1">Último: {prevHint}</p>
+                    )}
                     </div>
                   )
                 })}
