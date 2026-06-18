@@ -814,24 +814,34 @@ export default function Treino() {
 
             {/* Tabela de séries */}
             <div className="flex-1">
-              <div className="grid grid-cols-[40px_1fr_1fr_48px] gap-3 mb-3">
+              <div className="grid grid-cols-[32px_1fr_1fr_44px] gap-2 mb-3">
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Set</span>
-                <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Carga (kg)</span>
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Reps</span>
+                <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Carga (kg)</span>
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest text-right">Feito</span>
               </div>
               <div className="space-y-2">
                 {sets.map((set, si) => {
                   const isNewPR = set.done && hist.pr && parseFloat(set.carga) > hist.pr
                   return (
-                    <div key={si} className={`grid grid-cols-[40px_1fr_1fr_48px] gap-3 items-center py-2 border-t border-zinc-800 ${set.done ? 'opacity-60' : ''}`}>
+                    <div key={si} className={`grid grid-cols-[32px_1fr_1fr_44px] gap-2 items-center py-2 border-t border-zinc-800 ${set.done ? 'opacity-60' : ''}`}>
                       <span className="font-heading font-bold text-zinc-400 text-sm">
                         {String(si + 1).padStart(2, '0')}
                       </span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder={ex.repeticoes || '0'}
+                        value={set.repeticoes}
+                        disabled={set.done || viewOnly}
+                        onChange={e => updateSet(currentIdx, si, 'repeticoes', e.target.value)}
+                        className="w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
                       <div className="relative">
                         <input
                           type="number"
                           min="0"
+                          step="0.5"
                           placeholder="0"
                           value={set.carga}
                           disabled={set.done || viewOnly}
@@ -842,14 +852,6 @@ export default function Treino() {
                           <span className="absolute -top-2 -right-1 text-[9px] bg-yellow-500 text-black font-black px-1 rounded uppercase">PR!</span>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        placeholder={ex.repeticoes || 'Reps'}
-                        value={set.repeticoes}
-                        disabled={set.done || viewOnly}
-                        onChange={e => updateSet(currentIdx, si, 'repeticoes', e.target.value)}
-                        className="disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
                       <div className="flex justify-end">
                         <button
                           onClick={() => !viewOnly && markDone(currentIdx, si)}
