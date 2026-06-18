@@ -54,6 +54,14 @@ export default function DayExerciseSelector({ format, selectedMusclesByDay, sele
     onChange({ ...selectedExercisesByDay, [key]: next })
   }
 
+  function moveExercise(dayId, muscleGroup, fromIndex, toIndex) {
+    const key = `${dayId}_${muscleGroup}`
+    const current = [...(selectedExercisesByDay[key] || [])]
+    const [moved] = current.splice(fromIndex, 1)
+    current.splice(toIndex, 0, moved)
+    onChange({ ...selectedExercisesByDay, [key]: current })
+  }
+
   async function saveCustomExercise(muscleGroup) {
     const name = newExName.trim()
     if (!name || !session) return
@@ -188,9 +196,34 @@ export default function DayExerciseSelector({ format, selectedMusclesByDay, sele
 
                     {selected.length > 0 && (
                       <div className="space-y-3 pt-2 border-t border-zinc-800/60">
-                        {selected.map(item => (
+                        {selected.map((item, idx) => (
                           <div key={item.name}>
-                            <p className="text-xs text-zinc-200 font-semibold mb-2">{item.name}</p>
+                            <div className="flex items-center justify-between mb-2 gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-[10px] font-mono text-zinc-600 flex-shrink-0 w-4 text-right">{idx + 1}</span>
+                                <p className="text-xs text-zinc-200 font-semibold truncate">{item.name}</p>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => moveExercise(day.id, mg, idx, idx - 1)}
+                                  disabled={idx === 0}
+                                  className="w-6 h-6 flex items-center justify-center rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => moveExercise(day.id, mg, idx, idx + 1)}
+                                  disabled={idx === selected.length - 1}
+                                  className="w-6 h-6 flex items-center justify-center rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-2 mb-2">
                               <div>
                                 <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Séries</p>
