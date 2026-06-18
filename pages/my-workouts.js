@@ -132,9 +132,14 @@ export default function MyWorkouts() {
                       {/* Detalhes */}
                       {workout.days ? (
                         <div className="space-y-3">
-                          {workout.days.map(day => (
+                          {workout.days.map(day => {
+                            const exCount = day.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
+                            return (
                             <div key={day.dayId} className="bg-[#232323] rounded-xl p-4 border border-zinc-800">
-                              <p className="text-xs font-semibold uppercase tracking-widest text-red-500 mb-3">{day.label}</p>
+                              <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs font-semibold uppercase tracking-widest text-red-500">{day.label}</p>
+                                <span className="text-xs text-zinc-500">{exCount} exercício{exCount !== 1 ? 's' : ''}</span>
+                              </div>
                               <div className="space-y-2">
                                 {day.exercises.map(mg => (
                                   <div key={mg.muscleGroup}>
@@ -158,7 +163,7 @@ export default function MyWorkouts() {
                                 ))}
                               </div>
                             </div>
-                          ))}
+                          )})}
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
