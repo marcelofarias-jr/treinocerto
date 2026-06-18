@@ -278,6 +278,39 @@ export default function Home() {
   const streak = calcStreak(allSessions)
   const totalSessions = allSessions.length
 
+  function getRestAdvice(streak) {
+    if (streak >= 6) return {
+      level: 'critical',
+      icon: '🛑',
+      title: `${streak} dias seguidos — descanse hoje`,
+      body: 'Treinar mais de 5 dias consecutivos aumenta o risco de overtraining, eleva o cortisol e prejudica a hipertrofia. O músculo cresce no descanso.',
+      border: 'border-red-800',
+      bg: 'bg-red-950/30',
+      titleColor: 'text-red-400',
+    }
+    if (streak >= 4) return {
+      level: 'warning',
+      icon: '⚠️',
+      title: `${streak} dias seguidos — planeje um descanso`,
+      body: 'Especialistas recomendam 1–2 dias de descanso por semana. A recuperação muscular e do sistema nervoso central leva 48–72h.',
+      border: 'border-amber-800',
+      bg: 'bg-amber-950/20',
+      titleColor: 'text-amber-400',
+    }
+    if (streak >= 3) return {
+      level: 'tip',
+      icon: '💡',
+      title: 'Ótimo ritmo — inclua um dia de descanso em breve',
+      body: 'Após 3–4 dias consecutivos o descanso potencializa os ganhos. O crescimento muscular acontece fora da academia.',
+      border: 'border-zinc-700',
+      bg: 'bg-zinc-800/30',
+      titleColor: 'text-zinc-300',
+    }
+    return null
+  }
+
+  const restAdvice = getRestAdvice(streak)
+
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       {selectedSession && (
@@ -318,6 +351,19 @@ export default function Home() {
               <div>
                 <p className="font-heading font-black text-2xl text-white leading-none">{totalSessions}</p>
                 <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">treinos no total</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Aviso de descanso */}
+        {!loadingData && restAdvice && (
+          <div className={`border ${restAdvice.border} ${restAdvice.bg} rounded-2xl p-4`}>
+            <div className="flex items-start gap-3">
+              <span className="text-xl leading-none flex-shrink-0 mt-0.5">{restAdvice.icon}</span>
+              <div>
+                <p className={`text-sm font-bold ${restAdvice.titleColor} mb-1`}>{restAdvice.title}</p>
+                <p className="text-xs text-zinc-400 leading-relaxed">{restAdvice.body}</p>
               </div>
             </div>
           </div>
