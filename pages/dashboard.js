@@ -126,35 +126,28 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-5">
 
-        {/* Hero */}
-        <div className="relative bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 mb-8 overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-red-900/20 rounded-full blur-3xl pointer-events-none" />
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">
-            {workoutId ? '· Editando treino ·' : '· Novo treino ·'}
+        {/* Hero compacto */}
+        <div className="mb-5">
+          <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">
+            {workoutId ? 'Editando treino' : 'Novo treino'}
           </p>
-          <h1 className="font-heading font-black text-5xl uppercase text-white leading-tight">
-            MONTE O TREINO.
+          <h1 className="font-heading font-black text-3xl uppercase text-white leading-tight">
+            Monte seu <span className="text-red-500">treino</span>
           </h1>
-          <h1 className="font-heading font-black text-5xl uppercase text-red-500 leading-tight">
-            LEVANTE PESADO.
-          </h1>
-          <p className="text-zinc-500 text-sm mt-3 max-w-lg">
-            Selecione o tipo de divisão semanal. Em seguida escolha os músculos de cada dia e os exercícios.
-          </p>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Step 1 */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
             <StepLabel number="1" label="Escolha o formato" />
             <FormatSelector value={format} onChange={f => { setFormat(f); setSelectedMusclesByDay({}); setSelectedExercisesByDay({}); }} />
           </div>
 
           {/* Step 2 */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6">
-            <StepLabel number="2" label="Selecione os grupos musculares" />
+          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+            <StepLabel number="2" label="Grupos musculares" />
             <DayMuscleGroupSelector
               format={format}
               selectedByDay={selectedMusclesByDay}
@@ -163,8 +156,8 @@ export default function Dashboard() {
           </div>
 
           {/* Step 3 */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-6">
-            <StepLabel number="3" label="Escolha os exercícios" />
+          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+            <StepLabel number="3" label="Exercícios" />
             <DayExerciseSelector
               format={format}
               selectedMusclesByDay={selectedMusclesByDay}
@@ -174,25 +167,25 @@ export default function Dashboard() {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 pb-8">
+          <div className="flex flex-col sm:flex-row gap-3 pb-6">
             <button
               onClick={save}
               disabled={saving}
-              className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50"
+              className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50"
             >
               {saving ? "Salvando..." : workoutId ? "Atualizar treino" : "Salvar treino"}
             </button>
             {workoutId && (
               <button
                 onClick={resetForm}
-                className="px-6 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors"
+                className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors"
               >
                 Novo treino
               </button>
             )}
             <Link
               href="/my-workouts"
-              className="px-6 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors flex items-center"
+              className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors flex items-center justify-center"
             >
               Ver meus treinos
             </Link>
