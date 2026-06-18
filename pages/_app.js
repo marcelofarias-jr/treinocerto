@@ -21,8 +21,8 @@ function AppContent({ Component, pageProps }) {
         <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
       </Head>
       {session && <Header />}
-      {/* pb-16 md:pb-0: espaço para o bottom nav no mobile */}
-      <div className="pb-16 md:pb-0">
+      {/* pb-28 md:pb-0: espaço para bottom nav + barra de treino ativo no mobile */}
+      <div className="pb-28 md:pb-0">
         <Component {...pageProps} />
       </div>
     </>

@@ -68,25 +68,49 @@ function WorkoutTimer({ seconds }) {
   )
 }
 
-function RestTimerOverlay({ seconds, onDone }) {
-  const [remaining, setRemaining] = useState(seconds)
-  const beeped = useRef(false)
+function RestTimerOverlay({ endTime, totalSeconds, onDone }) {
+  const [remaining, setRemaining] = useState(() =>
+    Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+  )
+  const alerted = useRef(false)
+  const doneFired = useRef(false)
+
+  function triggerAlert() {
+    if (alerted.current) return
+    alerted.current = true
+    playBeep()
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500])
+  }
 
   useEffect(() => {
-    if (remaining <= 0) {
-      if (!beeped.current) {
-        beeped.current = true
-        playBeep()
-        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500])
-      }
-      const t = setTimeout(onDone, 800)
+    function update() {
+      const rem = Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+      setRemaining(rem)
+      if (rem <= 0) triggerAlert()
+    }
+
+    function onVisible() {
+      if (!document.hidden) update()
+    }
+
+    update()
+    const t = setInterval(update, 500)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [endTime])
+
+  useEffect(() => {
+    if (remaining <= 0 && !doneFired.current) {
+      doneFired.current = true
+      const t = setTimeout(onDone, 1200)
       return () => clearTimeout(t)
     }
-    const t = setTimeout(() => setRemaining(r => r - 1), 1000)
-    return () => clearTimeout(t)
   }, [remaining])
 
-  const pct = Math.round(((seconds - remaining) / seconds) * 100)
+  const pct = Math.min(100, Math.round(((totalSeconds - remaining) / totalSeconds) * 100))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
@@ -96,9 +120,9 @@ function RestTimerOverlay({ seconds, onDone }) {
           {fmt(remaining)}
         </p>
         <div className="h-1.5 bg-zinc-800 rounded-full mb-8 overflow-hidden">
-          <div className="h-1.5 bg-red-600 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 bg-red-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
-        <button onClick={onDone} className="text-zinc-500 hover:text-zinc-300 text-xs uppercase tracking-widest transition-colors">
+        <button onClick={onDone} className="text-zinc-400 hover:text-zinc-300 text-xs uppercase tracking-widest transition-colors">
           Pular descanso
         </button>
       </div>
@@ -123,7 +147,8 @@ export default function Treino() {
   const [currentIdx, setCurrentIdx] = useState(0)
   const [setsData, setSetsData] = useState({})
   const [elapsed, setElapsed] = useState(0)
-  const [restSeconds, setRestSeconds] = useState(null)
+  const [restEndTime, setRestEndTime] = useState(null)
+  const [restTotal, setRestTotal] = useState(60)
   const [finishing, setFinishing] = useState(false)
   const [done, setDone] = useState(false)
   const [exerciseHistory, setExerciseHistory] = useState({})
@@ -315,7 +340,12 @@ export default function Treino() {
       return { ...prev, [ei]: sets }
     })
     const ds = parseInt(flatEx[ei]?.descanso) || 60
-    if (ds > 0) setRestSeconds(ds)
+    if (ds > 0) {
+      const end = Date.now() + ds * 1000
+      setRestEndTime(end)
+      setRestTotal(ds)
+      localStorage.setItem('restTimerEnd', String(end))
+    }
   }
 
   function getExProg(ei) {
@@ -512,8 +542,8 @@ export default function Treino() {
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      {restSeconds && (
-        <RestTimerOverlay seconds={restSeconds} onDone={() => setRestSeconds(null)} />
+      {restEndTime && (
+        <RestTimerOverlay endTime={restEndTime} totalSeconds={restTotal} onDone={() => { setRestEndTime(null); localStorage.removeItem('restTimerEnd') }} />
       )}
 
       {showFinishModal && (
@@ -602,9 +632,9 @@ export default function Treino() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto px-4 pt-4 pb-6">
-        {/* Top bar */}
-        <div className="flex items-center justify-between mb-5">
+      <div className="max-w-6xl mx-auto px-4 pt-0 pb-6">
+        {/* Top bar — fixo no topo durante o scroll */}
+        <div className="sticky top-0 z-30 bg-[#0f0f0f] py-4 -mx-4 px-4 mb-5 flex items-center justify-between">
           <button
             onClick={() => { setSelectedDayId(null); setViewOnly(false); setSetsData({}) }}
             className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors"

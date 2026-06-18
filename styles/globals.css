@@ -12,9 +12,10 @@ body {
 }
 
 input, select, textarea {
-  @apply bg-[#1f1f1f] border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2 text-sm;
+  @apply bg-[#1f1f1f] border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2 text-base;
   outline: none;
   transition: border-color 0.15s;
+  font-size: 16px; /* previne zoom automático no iOS */
 }
 input:focus, select:focus, textarea:focus {
   @apply border-red-500;
