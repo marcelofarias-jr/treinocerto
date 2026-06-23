@@ -465,6 +465,12 @@ function getRestAdvice(streak) {
                 <h2 className="font-heading font-black text-2xl uppercase text-white">{formatConfig?.name}</h2>
                 <p className="text-zinc-300 text-xs mt-1">
                   {workout.days?.length} {workout.days?.length === 1 ? 'dia' : 'dias'} de treino
+                  {' · '}
+                  {workout.days?.reduce((t, day) =>
+                    t + day.exercises.reduce((dt, mg) =>
+                      dt + mg.exercises.reduce((mt, ex) =>
+                        mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0), 0)
+                  } séries
                 </p>
               </div>
               <Link href="/my-workouts" className="text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors">

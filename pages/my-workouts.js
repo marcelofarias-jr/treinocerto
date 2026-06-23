@@ -98,6 +98,12 @@ export default function MyWorkouts() {
                         {workout.days && (
                           <p className="text-zinc-400 text-xs mt-0.5">
                             {workout.days.length} {workout.days.length === 1 ? 'dia' : 'dias'}
+                            {' · '}
+                            {workout.days.reduce((t, day) =>
+                              t + day.exercises.reduce((dt, mg) =>
+                                dt + mg.exercises.reduce((mt, ex) =>
+                                  mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0), 0)
+                            } séries
                           </p>
                         )}
                       </div>
@@ -134,11 +140,14 @@ export default function MyWorkouts() {
                         <div className="space-y-3">
                           {workout.days.map(day => {
                             const exCount = day.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
+                            const seriesCount = day.exercises.reduce((dt, mg) =>
+                              dt + mg.exercises.reduce((mt, ex) =>
+                                mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0)
                             return (
                             <div key={day.dayId} className="bg-[#232323] rounded-xl p-4 border border-zinc-800">
                               <div className="flex items-center justify-between mb-3">
                                 <p className="text-xs font-semibold uppercase tracking-widest text-red-500">{day.label}</p>
-                                <span className="text-xs text-zinc-500">{exCount} exercício{exCount !== 1 ? 's' : ''}</span>
+                                <span className="text-xs text-zinc-500">{exCount} ex · {seriesCount} séries</span>
                               </div>
                               <div className="space-y-2">
                                 {day.exercises.map(mg => (
@@ -149,12 +158,14 @@ export default function MyWorkouts() {
                                     <div className="flex flex-wrap gap-1.5">
                                       {mg.exercises.map(ex => {
                                         const item = typeof ex === "string" ? { name: ex } : ex;
+                                        const series = item.series ? parseInt(item.series) : 3;
                                         return (
                                           <span key={item.name} className="px-2.5 py-1 bg-zinc-800 text-zinc-300 rounded text-xs">
                                             {item.name}
                                             {item.observacoes && (
                                               <span className="text-zinc-500 ml-1">· {item.observacoes}</span>
                                             )}
+                                            <span className="text-zinc-600 ml-1">· {series}×</span>
                                           </span>
                                         );
                                       })}
