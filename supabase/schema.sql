@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS custom_exercises (
 
 CREATE INDEX IF NOT EXISTS idx_custom_exercises_user ON custom_exercises(user_email);
 
+-- Migração: adicionar coluna de peso corporal na tabela de treinos
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS body_weights JSONB DEFAULT '[]';
+
 -- Exercícios padrão ocultos (excluídos ou substituídos pelo admin)
 CREATE TABLE IF NOT EXISTS hidden_exercises (
   name TEXT PRIMARY KEY,

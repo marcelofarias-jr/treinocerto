@@ -43,12 +43,23 @@ export default function Stats() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('week')
   const [selectedEx, setSelectedEx] = useState('')
+  const [bodyWeights, setBodyWeights] = useState([])
+  const [weightDate, setWeightDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [weightInput, setWeightInput] = useState('')
+  const [savingWeight, setSavingWeight] = useState(false)
 
   useEffect(() => {
     if (!session) return
     fetch(`/api/sessions?email=${session.user.email}`)
       .then(r => r.json())
       .then(data => { setSessions(Array.isArray(data) ? data : []); setLoading(false) })
+  }, [session])
+
+  useEffect(() => {
+    if (!session) return
+    fetch(`/api/body-weight?email=${session.user.email}`)
+      .then(r => r.json())
+      .then(data => setBodyWeights(Array.isArray(data) ? data : []))
   }, [session])
 
   // Hooks devem vir antes de qualquer early return
@@ -169,6 +180,31 @@ export default function Stats() {
   const maxWeek = Math.max(...weeks.map(w => w.count), 1)
 
   const isEmpty = totalSessions === 0
+
+  async function saveWeight() {
+    if (!weightInput || !weightDate) return
+    setSavingWeight(true)
+    try {
+      const res = await fetch('/api/body-weight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail: session.user.email, date: weightDate, weight: parseFloat(weightInput) }),
+      })
+      const entry = await res.json()
+      setBodyWeights(prev => {
+        const filtered = prev.filter(e => e.date !== entry.date)
+        return [...filtered, entry].sort((a, b) => a.date.localeCompare(b.date))
+      })
+      setWeightInput('')
+    } finally {
+      setSavingWeight(false)
+    }
+  }
+
+  async function deleteWeight(id) {
+    await fetch(`/api/body-weight?id=${id}&email=${session.user.email}`, { method: 'DELETE' })
+    setBodyWeights(prev => prev.filter(e => e.id !== id))
+  }
 
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
@@ -296,6 +332,99 @@ export default function Stats() {
                 </div>
               </div>
             )}
+
+            {/* Peso corporal */}
+            <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
+              <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Peso corporal</h2>
+              <p className="text-xs text-zinc-400 mb-4">Registre seu peso e acompanhe a evolução</p>
+
+              {/* Formulário de registro */}
+              <div className="flex gap-2 mb-5">
+                <input
+                  type="date"
+                  value={weightDate}
+                  onChange={e => setWeightDate(e.target.value)}
+                  className="flex-1 min-w-0"
+                />
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="1"
+                  placeholder="kg"
+                  value={weightInput}
+                  onChange={e => setWeightInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveWeight()}
+                  className="w-20 flex-shrink-0"
+                />
+                <button
+                  onClick={saveWeight}
+                  disabled={!weightInput || savingWeight}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-heading font-bold text-xs uppercase tracking-widest rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  {savingWeight ? '...' : 'Salvar'}
+                </button>
+              </div>
+
+              {bodyWeights.length < 2 ? (
+                <p className="text-zinc-500 text-xs text-center py-4">
+                  {bodyWeights.length === 0
+                    ? 'Registre seu primeiro peso para ver a progressão.'
+                    : 'Adicione mais um registro para ver o gráfico.'}
+                </p>
+              ) : (
+                <>
+                  <WeightChart data={bodyWeights} />
+
+                  {(() => {
+                    const first = bodyWeights[0]
+                    const last = bodyWeights[bodyWeights.length - 1]
+                    const diff = last.weight - first.weight
+                    const days = Math.round((new Date(last.date) - new Date(first.date)) / (86400000))
+                    if (diff === 0) return null
+                    return (
+                      <p className="text-xs mt-3 mb-3 pt-3 border-t border-zinc-800 text-zinc-400">
+                        <span className={diff < 0 ? 'text-green-500' : 'text-red-400'}>
+                          {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}kg
+                        </span>
+                        {' '}em {days} dias
+                      </p>
+                    )
+                  })()}
+
+                  <div className="space-y-0.5 mt-2">
+                    {[...bodyWeights].reverse().slice(0, 10).map((entry, i, arr) => {
+                      const prevEntry = arr[i + 1]
+                      const diff = prevEntry != null ? entry.weight - prevEntry.weight : null
+                      return (
+                        <div key={entry.id} className="flex items-center justify-between py-2 border-b border-zinc-800/60 last:border-0">
+                          <span className="text-xs text-zinc-400">
+                            {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            {diff !== null && diff !== 0 && (
+                              <span className={`text-[10px] font-bold ${diff < 0 ? 'text-green-500' : 'text-red-400'}`}>
+                                {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}kg
+                              </span>
+                            )}
+                            <span className="font-heading font-black text-white text-base">{entry.weight.toFixed(1)}kg</span>
+                            <button
+                              onClick={() => deleteWeight(entry.id)}
+                              className="text-zinc-700 hover:text-zinc-400 transition-colors"
+                              aria-label="Remover registro"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Progressão por exercício */}
             {allExerciseNames.length > 0 && (
@@ -437,6 +566,50 @@ function ProgressionChart({ data }) {
       </text>
       <text x={W - PAD} y={points[points.length - 1].y - 5} textAnchor="end" fontSize="9" fill="#f4f4f5" fontWeight="bold">
         {maxW}kg
+      </text>
+    </svg>
+  )
+}
+
+function WeightChart({ data }) {
+  const W = 320, H = 100, PAD = 16
+  const weights = data.map(d => d.weight)
+  const minW = Math.min(...weights)
+  const maxW = Math.max(...weights)
+  const range = maxW - minW || 0.5
+
+  const points = data.map((d, i) => {
+    const x = PAD + (i / Math.max(data.length - 1, 1)) * (W - PAD * 2)
+    const y = H - PAD - ((d.weight - minW) / range) * (H - PAD * 2)
+    return { x, y, ...d }
+  })
+
+  const polyline = points.map(p => `${p.x},${p.y}`).join(' ')
+  const area = `M${points[0].x},${H - PAD} ` +
+    points.map(p => `L${p.x},${p.y}`).join(' ') +
+    ` L${points[points.length - 1].x},${H - PAD} Z`
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 100 }}>
+      <defs>
+        <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#dc2626" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#dc2626" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#weightGrad)" />
+      <polyline points={polyline} fill="none" stroke="#dc2626" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3" fill="#dc2626" />
+      ))}
+      <text x={PAD} y={H - 2} textAnchor="start" fontSize="8" fill="#52525b">
+        {new Date(points[0].date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      </text>
+      <text x={W - PAD} y={H - 2} textAnchor="end" fontSize="8" fill="#52525b">
+        {new Date(points[points.length - 1].date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+      </text>
+      <text x={W - PAD} y={points[points.length - 1].y - 6} textAnchor="end" fontSize="9" fill="#f4f4f5" fontWeight="bold">
+        {points[points.length - 1].weight.toFixed(1)}kg
       </text>
     </svg>
   )

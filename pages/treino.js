@@ -68,7 +68,7 @@ function WorkoutTimer({ seconds }) {
   )
 }
 
-function RestTimerOverlay({ endTime, totalSeconds, onDone }) {
+function RestTimerWidget({ endTime, totalSeconds, onDone }) {
   const [remaining, setRemaining] = useState(() =>
     Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
   )
@@ -111,20 +111,32 @@ function RestTimerOverlay({ endTime, totalSeconds, onDone }) {
   }, [remaining])
 
   const pct = Math.min(100, Math.round(((totalSeconds - remaining) / totalSeconds) * 100))
+  const urgent = remaining > 0 && remaining <= 5
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
-      <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-10 text-center max-w-sm w-full">
-        <p className="text-xs text-zinc-400 uppercase tracking-widest mb-6">Descanso</p>
-        <p className={`font-heading font-black text-8xl leading-none mb-6 transition-colors ${remaining <= 5 ? 'text-red-500' : 'text-white'}`}>
+    <div
+      className="fixed z-50 right-4"
+      style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
+    >
+      <div className={`bg-[#1a1a1a] border ${urgent ? 'border-red-500' : 'border-zinc-700'} rounded-xl px-3 pt-2 pb-2.5 shadow-xl min-w-[96px]`}>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">Descanso</span>
+          <button
+            onClick={onDone}
+            className="text-zinc-600 hover:text-zinc-400 transition-colors leading-none"
+            aria-label="Pular descanso"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <p className={`font-heading font-black text-2xl leading-none tracking-widest text-center ${urgent ? 'text-red-500' : 'text-white'}`}>
           {fmt(remaining)}
         </p>
-        <div className="h-1.5 bg-zinc-800 rounded-full mb-8 overflow-hidden">
-          <div className="h-1.5 bg-red-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+        <div className="h-0.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
+          <div className="h-0.5 bg-red-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
-        <button onClick={onDone} className="text-zinc-400 hover:text-zinc-300 text-xs uppercase tracking-widest transition-colors">
-          Pular descanso
-        </button>
       </div>
     </div>
   )
@@ -150,6 +162,7 @@ export default function Treino() {
   const [elapsed, setElapsed] = useState(0)
   const [restEndTime, setRestEndTime] = useState(null)
   const [restTotal, setRestTotal] = useState(60)
+  const [restingSet, setRestingSet] = useState(null)
   const [finishing, setFinishing] = useState(false)
   const [summary, setSummary] = useState(null)
   const [exerciseHistory, setExerciseHistory] = useState({})
@@ -218,6 +231,25 @@ export default function Treino() {
       }
     })
   }, [session])
+
+  // Restaura timer de descanso ativo ao retornar à página
+  useEffect(() => {
+    const savedEnd = localStorage.getItem('restTimerEnd')
+    if (!savedEnd) return
+    const rem = Math.ceil((parseInt(savedEnd) - Date.now()) / 1000)
+    if (rem > 0) {
+      setRestEndTime(parseInt(savedEnd))
+      setRestTotal(parseInt(localStorage.getItem('restTimerTotal') || '60'))
+      try {
+        const savedSet = JSON.parse(localStorage.getItem('restTimerSet') || 'null')
+        if (savedSet) setRestingSet(savedSet)
+      } catch (_) {}
+    } else {
+      localStorage.removeItem('restTimerEnd')
+      localStorage.removeItem('restTimerTotal')
+      localStorage.removeItem('restTimerSet')
+    }
+  }, [])
 
   // Timer baseado no timestamp real — não para ao sair da aba ou bloquear o celular
   useEffect(() => {
@@ -354,7 +386,10 @@ export default function Treino() {
       const end = Date.now() + ds * 1000
       setRestEndTime(end)
       setRestTotal(ds)
+      setRestingSet({ ei, si })
       localStorage.setItem('restTimerEnd', String(end))
+      localStorage.setItem('restTimerTotal', String(ds))
+      localStorage.setItem('restTimerSet', JSON.stringify({ ei, si }))
     }
   }
 
@@ -707,7 +742,7 @@ export default function Treino() {
   return (
     <div className="min-h-screen bg-[#0f0f0f]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {restEndTime && (
-        <RestTimerOverlay endTime={restEndTime} totalSeconds={restTotal} onDone={() => { setRestEndTime(null); localStorage.removeItem('restTimerEnd') }} />
+        <RestTimerWidget endTime={restEndTime} totalSeconds={restTotal} onDone={() => { setRestEndTime(null); setRestingSet(null); localStorage.removeItem('restTimerEnd'); localStorage.removeItem('restTimerTotal'); localStorage.removeItem('restTimerSet') }} />
       )}
 
       {showFinishModal && (
@@ -1041,6 +1076,8 @@ export default function Treino() {
                     else progressColor = 'border-l-2 border-l-red-700'
                   }
 
+                  const isResting = !!restEndTime && restingSet?.ei === currentIdx && restingSet?.si === si
+
                   return (
                     <div key={si} className="border-t border-zinc-800">
                     <div className={`grid grid-cols-[32px_1fr_1fr_44px] gap-2 items-center py-2 pl-1 ${set.done ? `opacity-60 ${progressColor}` : ''}`}>
@@ -1049,6 +1086,7 @@ export default function Treino() {
                       </span>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min="0"
                         placeholder={ex.repeticoes || '0'}
                         value={set.repeticoes}
@@ -1059,6 +1097,7 @@ export default function Treino() {
                       <div className="relative">
                         <input
                           type="number"
+                          inputMode="decimal"
                           min="0"
                           step="0.5"
                           placeholder="0"
@@ -1090,6 +1129,13 @@ export default function Treino() {
                     {/* Hint do valor anterior — só em séries pendentes */}
                     {!set.done && prevHint && (
                       <p className="text-[10px] text-zinc-600 pl-9 pb-1">Último: {prevHint}</p>
+                    )}
+                    {/* Indicador de descanso ativo para esta série */}
+                    {isResting && (
+                      <div className="flex items-center gap-1.5 pl-9 pb-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                        <span className="text-[10px] text-red-400 uppercase tracking-widest font-semibold">Descansando</span>
+                      </div>
                     )}
                     </div>
                   )

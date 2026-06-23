@@ -223,6 +223,9 @@ export default function Home() {
   const [loadingData, setLoadingData] = useState(true)
   const [activeWorkout, setActiveWorkout] = useState(false)
   const [selectedSession, setSelectedSession] = useState(null)
+  const [lastWeight, setLastWeight] = useState(undefined)
+  const [weightInputHome, setWeightInputHome] = useState('')
+  const [savingWeightHome, setSavingWeightHome] = useState(false)
 
   useEffect(() => {
     setActiveWorkout(!!localStorage.getItem('workoutStartTime'))
@@ -240,6 +243,14 @@ export default function Home() {
       setAllSessions(ss)
       setLoadingData(false)
     })
+  }, [session])
+
+  useEffect(() => {
+    if (!session) return
+    fetch(`/api/body-weight?email=${session.user.email}&last=1`)
+      .then(r => r.json())
+      .then(data => setLastWeight(data || null))
+      .catch(() => setLastWeight(null))
   }, [session])
 
   if (status === 'loading') return null
@@ -322,6 +333,29 @@ function getRestAdvice(streak) {
   const restAdvice = getRestAdvice(streak)
   const recommendedDay = !loadingData && workout ? getRecommendedDay(workout, allSessions) : null
 
+  const today = new Date().toISOString().split('T')[0]
+  const daysSinceLast = lastWeight
+    ? Math.floor((new Date(today) - new Date(lastWeight.date)) / 86400000)
+    : null
+  const showWeightReminder = lastWeight !== undefined && (lastWeight === null || daysSinceLast > 7)
+
+  async function saveWeightHome() {
+    if (!weightInputHome) return
+    setSavingWeightHome(true)
+    try {
+      const res = await fetch('/api/body-weight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail: session.user.email, date: today, weight: parseFloat(weightInputHome) }),
+      })
+      const entry = await res.json()
+      setLastWeight(entry)
+      setWeightInputHome('')
+    } finally {
+      setSavingWeightHome(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       {selectedSession && (
@@ -363,6 +397,38 @@ function getRestAdvice(streak) {
                 <p className="font-heading font-black text-2xl text-white leading-none">{totalSessions}</p>
                 <p className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5">treinos no total</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lembrete de peso */}
+        {showWeightReminder && (
+          <div className="border border-zinc-700 bg-[#1a1a1a] rounded-2xl p-4">
+            <p className="text-sm font-bold text-zinc-200 mb-0.5">⚖️ Atualize seu peso</p>
+            <p className="text-xs text-zinc-500 mb-3">
+              {lastWeight
+                ? `Último registro há ${daysSinceLast} dias`
+                : 'Nenhum registro ainda'}
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                min="1"
+                placeholder="kg"
+                value={weightInputHome}
+                onChange={e => setWeightInputHome(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveWeightHome()}
+                className="flex-1 min-w-0"
+              />
+              <button
+                onClick={saveWeightHome}
+                disabled={!weightInputHome || savingWeightHome}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-heading font-bold text-xs uppercase tracking-widest rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                {savingWeightHome ? '...' : 'Salvar'}
+              </button>
             </div>
           </div>
         )}
