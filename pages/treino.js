@@ -172,6 +172,7 @@ export default function Treino() {
   const [viewOnly, setViewOnly] = useState(false)
   const [sessionNotes, setSessionNotes] = useState('')
   const listRef = useRef(null)
+  const setsDataInitialized = useRef(false)
 
   // Carrega o treino do usuário e restaura sessão ativa se houver
   useEffect(() => {
@@ -229,6 +230,7 @@ export default function Treino() {
         setSetsData(init)
         localStorage.setItem('workoutSetsData', JSON.stringify(init))
       }
+      setsDataInitialized.current = true
     })
   }, [session])
 
@@ -264,6 +266,7 @@ export default function Treino() {
 
   // Persiste setsData e currentIdx em tempo real
   useEffect(() => {
+    if (!setsDataInitialized.current) return
     if (!localStorage.getItem('workoutStartTime')) return
     localStorage.setItem('workoutSetsData', JSON.stringify(setsData))
   }, [setsData])
@@ -331,6 +334,7 @@ export default function Treino() {
       }))
     })
 
+    setsDataInitialized.current = true
     setSetsData(init)
     setSelectedDayId(dayId)
     setCurrentIdx(0)
@@ -407,6 +411,7 @@ export default function Treino() {
   }
 
   function cancelWorkout() {
+    setsDataInitialized.current = false
     clearWorkoutStorage()
     setSelectedDayId(null)
     setSetsData({})
