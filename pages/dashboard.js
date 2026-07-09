@@ -3,8 +3,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import FormatSelector from "../components/FormatSelector";
-import DayMuscleGroupSelector from "../components/DayMuscleGroupSelector";
-import DayExerciseSelector from "../components/DayExerciseSelector";
+import WorkoutDayBuilder from "../components/WorkoutDayBuilder";
 import Toast from "../components/Toast";
 import { formatConfigs } from "../lib/workoutConfig";
 
@@ -145,24 +144,15 @@ export default function Dashboard() {
             <FormatSelector value={format} onChange={f => { setFormat(f); setSelectedMusclesByDay({}); setSelectedExercisesByDay({}); }} />
           </div>
 
-          {/* Step 2 */}
+          {/* Step 2 — grupos + exercícios juntos */}
           <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
-            <StepLabel number="2" label="Grupos musculares" />
-            <DayMuscleGroupSelector
-              format={format}
-              selectedByDay={selectedMusclesByDay}
-              onChange={setSelectedMusclesByDay}
-            />
-          </div>
-
-          {/* Step 3 */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
-            <StepLabel number="3" label="Exercícios" />
-            <DayExerciseSelector
+            <StepLabel number="2" label="Grupos e exercícios" />
+            <WorkoutDayBuilder
               format={format}
               selectedMusclesByDay={selectedMusclesByDay}
               selectedExercisesByDay={selectedExercisesByDay}
-              onChange={setSelectedExercisesByDay}
+              onMusclesChange={setSelectedMusclesByDay}
+              onExercisesChange={setSelectedExercisesByDay}
             />
           </div>
 
