@@ -50,3 +50,15 @@ CREATE TABLE IF NOT EXISTS hidden_exercises (
   muscle_group TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Registro de suplementos tomados por dia (a existência da linha = tomado)
+CREATE TABLE IF NOT EXISTS supplement_logs (
+  id BIGINT PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  date TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_supplement_logs_unique ON supplement_logs(user_email, date, name);
+CREATE INDEX IF NOT EXISTS idx_supplement_logs_user_date ON supplement_logs(user_email, date);

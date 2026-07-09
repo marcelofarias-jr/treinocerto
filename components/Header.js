@@ -43,6 +43,16 @@ const NAV = [
     ),
   },
   {
+    href: "/supplements",
+    label: "Suplem.",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 12.5l8-8a4.95 4.95 0 117 7l-8 8a4.95 4.95 0 11-7-7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.5 8.5l7 7" />
+      </svg>
+    ),
+  },
+  {
     href: "/stats",
     label: "Stats",
     icon: (
