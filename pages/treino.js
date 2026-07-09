@@ -2,6 +2,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
 import { muscleGroupLabels } from '../lib/workoutConfig'
+import { todayFortaleza } from '../lib/dates'
 
 function fmt(s) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
@@ -460,7 +461,7 @@ export default function Treino() {
 
     clearWorkoutStorage()
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayFortaleza()
     await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

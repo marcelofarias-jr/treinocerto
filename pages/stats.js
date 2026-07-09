@@ -2,6 +2,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useState, useMemo } from 'react'
 import { muscleGroupLabels } from '../lib/workoutConfig'
+import { todayFortaleza, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays } from '../lib/dates'
 
 function fmtDuration(s) {
   const h = Math.floor(s / 3600)
@@ -17,21 +18,17 @@ function fmtWeight(kg) {
 
 function calcStreak(sessions) {
   const dateSet = new Set(sessions.map(s => s.date))
-  const today = new Date().toISOString().split('T')[0]
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  const today = todayFortaleza()
+  const yesterdayStr = addDays(today, -1)
 
   const start = dateSet.has(today) ? today : dateSet.has(yesterdayStr) ? yesterdayStr : null
   if (!start) return 0
 
   let streak = 0
-  const cur = new Date(start + 'T12:00:00')
-  while (true) {
-    const d = cur.toISOString().split('T')[0]
-    if (!dateSet.has(d)) break
+  let cur = start
+  while (dateSet.has(cur)) {
     streak++
-    cur.setDate(cur.getDate() - 1)
+    cur = addDays(cur, -1)
   }
   return streak
 }
@@ -44,7 +41,7 @@ export default function Stats() {
   const [period, setPeriod] = useState('week')
   const [selectedEx, setSelectedEx] = useState('')
   const [bodyWeights, setBodyWeights] = useState([])
-  const [weightDate, setWeightDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [weightDate, setWeightDate] = useState(() => todayFortaleza())
   const [weightInput, setWeightInput] = useState('')
   const [savingWeight, setSavingWeight] = useState(false)
 
@@ -110,13 +107,12 @@ export default function Stats() {
   const longestSession = sessions.reduce((max, s) => Math.max(max, s.duration || 0), 0)
 
   // ── Período filtrado ──
-  const now = new Date()
-  const periodStart = new Date(now)
-  if (period === 'week') periodStart.setDate(now.getDate() - 7)
-  else periodStart.setMonth(now.getMonth() - 1)
-  const periodStartStr = periodStart.toISOString().split('T')[0]
+  // Semana: segunda → domingo da semana atual. Mês: dia 1 → último dia do mês atual.
+  const todayStr = todayFortaleza()
+  const periodStartStr = period === 'week' ? startOfWeek(todayStr) : startOfMonth(todayStr)
+  const periodEndStr   = period === 'week' ? endOfWeek(todayStr)   : endOfMonth(todayStr)
 
-  const pSessions  = sessions.filter(s => s.date >= periodStartStr)
+  const pSessions  = sessions.filter(s => s.date >= periodStartStr && s.date <= periodEndStr)
   const pSets      = pSessions.flatMap(s => (s.exercisesData || []).flatMap(e => (e.sets || []).filter(set => set.done)))
   const pWeight    = pSets.reduce((a, s) => a + (parseFloat(s.carga) || 0) * (parseInt(s.repeticoes) || 0), 0)
   const pReps      = pSets.reduce((a, s) => a + (parseInt(s.repeticoes) || 0), 0)
@@ -139,11 +135,10 @@ export default function Stats() {
     .map(([name, data]) => ({ name, ...data }))
     .sort((a, b) => b.weight - a.weight)
 
-  // ── Volume semanal por músculo ──
-  const weekStart = new Date()
-  weekStart.setDate(weekStart.getDate() - 6)
-  const weekStartStr = weekStart.toISOString().split('T')[0]
-  const weekSessions = sessions.filter(s => s.date >= weekStartStr)
+  // ── Volume semanal por músculo (semana atual: segunda → domingo) ──
+  const weekStartStr = startOfWeek(todayStr)
+  const weekEndStr   = endOfWeek(todayStr)
+  const weekSessions = sessions.filter(s => s.date >= weekStartStr && s.date <= weekEndStr)
   const muscleWeekSets = {}
   weekSessions.forEach(s => {
     ;(s.exercisesData || []).forEach(e => {
@@ -165,16 +160,14 @@ export default function Stats() {
   const muscleList = Object.entries(muscleCount).sort((a, b) => b[1] - a[1])
   const maxMuscle  = muscleList[0]?.[1] || 1
 
-  // ── Frequência: últimas 8 semanas ──
+  // ── Frequência: últimas 8 semanas (segunda → domingo) ──
+  const thisWeekStart = startOfWeek(todayStr)
   const weeks = Array.from({ length: 8 }, (_, i) => {
-    const wEnd = new Date(now)
-    wEnd.setDate(now.getDate() - i * 7)
-    const wStart = new Date(wEnd)
-    wStart.setDate(wEnd.getDate() - 6)
-    const startStr = wStart.toISOString().split('T')[0]
-    const endStr   = wEnd.toISOString().split('T')[0]
+    const startStr = addDays(thisWeekStart, -i * 7)
+    const endStr   = endOfWeek(startStr)
     const count    = sessions.filter(s => s.date >= startStr && s.date <= endStr).length
-    const label    = `${wStart.getDate()}/${wStart.getMonth() + 1}`
+    const [, m, d]  = startStr.split('-')
+    const label    = `${parseInt(d, 10)}/${parseInt(m, 10)}`
     return { label, count }
   }).reverse()
   const maxWeek = Math.max(...weeks.map(w => w.count), 1)
@@ -285,7 +278,7 @@ export default function Stats() {
             {muscleWeekList.length > 0 && (
               <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
                 <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Volume semanal</h2>
-                <p className="text-xs text-zinc-400 mb-4">Séries por músculo nos últimos 7 dias · recomendado: 10–20/semana</p>
+                <p className="text-xs text-zinc-400 mb-4">Séries por músculo nesta semana (seg–dom) · recomendado: 10–20/semana</p>
                 <div className="space-y-3">
                   {muscleWeekList.map(([mg, count]) => {
                     const pct = Math.min(100, Math.round((count / 20) * 100))

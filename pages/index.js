@@ -3,24 +3,21 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
+import { todayFortaleza, addDays } from '../lib/dates'
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
 function calcStreak(sessions) {
   const dateSet = new Set(sessions.map(s => s.date))
-  const today = new Date().toISOString().split('T')[0]
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  const today = todayFortaleza()
+  const yesterdayStr = addDays(today, -1)
   const start = dateSet.has(today) ? today : dateSet.has(yesterdayStr) ? yesterdayStr : null
   if (!start) return 0
   let streak = 0
-  const cur = new Date(start + 'T12:00:00')
-  while (true) {
-    const d = cur.toISOString().split('T')[0]
-    if (!dateSet.has(d)) break
+  let cur = start
+  while (dateSet.has(cur)) {
     streak++
-    cur.setDate(cur.getDate() - 1)
+    cur = addDays(cur, -1)
   }
   return streak
 }
@@ -134,7 +131,7 @@ function Calendar({ sessions, onDayClick }) {
   })
 
   const { year, month } = cursor
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayFortaleza()
   const firstWeekday = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const monthLabel = new Date(year, month).toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
@@ -333,7 +330,7 @@ function getRestAdvice(streak) {
   const restAdvice = getRestAdvice(streak)
   const recommendedDay = !loadingData && workout ? getRecommendedDay(workout, allSessions) : null
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayFortaleza()
   const daysSinceLast = lastWeight
     ? Math.floor((new Date(today) - new Date(lastWeight.date)) / 86400000)
     : null
