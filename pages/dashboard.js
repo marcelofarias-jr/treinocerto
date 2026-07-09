@@ -3,7 +3,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import FormatSelector from "../components/FormatSelector";
-import WorkoutDayBuilder from "../components/WorkoutDayBuilder";
+import WorkoutGroupSelector from "../components/WorkoutGroupSelector";
+import WorkoutArranger from "../components/WorkoutArranger";
 import Toast from "../components/Toast";
 import { formatConfigs } from "../lib/workoutConfig";
 
@@ -13,24 +14,66 @@ function normalizeExercise(item) {
     : item;
 }
 
-function StepLabel({ number, label }) {
+const STEPS = [
+  { n: 1, label: "Formato" },
+  { n: 2, label: "Grupos e exercícios" },
+  { n: 3, label: "Ordem e cargas" },
+];
+
+function StepIndicator({ step, onGoto }) {
   return (
-    <div className="flex items-center gap-3 mb-5">
-      <span className="w-6 h-6 bg-red-600 rounded-md flex items-center justify-center text-[11px] font-black text-white flex-shrink-0">
-        {number}
-      </span>
-      <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">{label}</p>
+    <div className="flex items-center gap-2 mb-5">
+      {STEPS.map((s, i) => {
+        const isActive = step === s.n;
+        const isDone = step > s.n;
+        return (
+          <div key={s.n} className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => (s.n < step ? onGoto(s.n) : null)}
+              disabled={s.n > step}
+              className={`flex items-center gap-2 min-w-0 ${s.n < step ? "cursor-pointer" : "cursor-default"}`}
+            >
+              <span
+                className={`w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-black flex-shrink-0 transition-colors ${
+                  isActive
+                    ? "bg-red-600 text-white"
+                    : isDone
+                    ? "bg-red-600/30 text-red-400"
+                    : "bg-zinc-800 text-zinc-500"
+                }`}
+              >
+                {isDone ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                  s.n
+                )}
+              </span>
+              <span
+                className={`text-xs font-semibold uppercase tracking-widest truncate hidden sm:inline ${
+                  isActive ? "text-white" : "text-zinc-500"
+                }`}
+              >
+                {s.label}
+              </span>
+            </button>
+            {i < STEPS.length - 1 && <span className="w-4 sm:w-8 h-px bg-zinc-800 flex-shrink-0" />}
+          </div>
+        );
+      })}
     </div>
-  )
+  );
 }
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { edit } = router.query;
+  const [step, setStep] = useState(1);
   const [format, setFormat] = useState("fullbody");
-  const [selectedMusclesByDay, setSelectedMusclesByDay] = useState({});
-  const [selectedExercisesByDay, setSelectedExercisesByDay] = useState({});
+  // Dados guardados por formato, para não perder as seleções ao voltar ao
+  // passo 1 ou alternar entre formatos.
+  const [musclesByFormat, setMusclesByFormat] = useState({}); // { [format]: { [dayId]: mg[] } }
+  const [exercisesByFormat, setExercisesByFormat] = useState({}); // { [format]: { [key]: item[] } }
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!edit);
   const [workoutId, setWorkoutId] = useState(null);
@@ -55,10 +98,10 @@ export default function Dashboard() {
                   exercisesByDay[key] = e.exercises.map(normalizeExercise);
                 });
               });
-              setSelectedMusclesByDay(musclesByDay);
-              setSelectedExercisesByDay(exercisesByDay);
+              setMusclesByFormat({ [workout.format]: musclesByDay });
+              setExercisesByFormat({ [workout.format]: exercisesByDay });
             } else {
-              setSelectedExercisesByDay({ "1": (workout.exercises || []).map(normalizeExercise) });
+              setExercisesByFormat({ [workout.format]: { "1": (workout.exercises || []).map(normalizeExercise) } });
             }
             setWorkoutId(workout.id);
           }
@@ -73,15 +116,31 @@ export default function Dashboard() {
     return null;
   }
 
+  // Visão do formato atualmente selecionado.
+  const selectedMusclesByDay = musclesByFormat[format] || {};
+  const selectedExercisesByDay = exercisesByFormat[format] || {};
+
+  const setMusclesByDay = (next) =>
+    setMusclesByFormat((prev) => ({ ...prev, [format]: next }));
+  const setExercisesByDay = (next) =>
+    setExercisesByFormat((prev) => ({ ...prev, [format]: next }));
+
+  const totalExercises = Object.values(selectedExercisesByDay).reduce(
+    (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+    0
+  );
+
   async function save() {
     setSaving(true);
     const config = formatConfigs[format];
     const days = config.days.map(day => {
       const muscleGroups = selectedMusclesByDay[day.id] || [];
-      const exercises = muscleGroups.map(mg => ({
-        muscleGroup: mg,
-        exercises: selectedExercisesByDay[`${day.id}_${mg}`] || []
-      }));
+      const exercises = muscleGroups
+        .map(mg => ({
+          muscleGroup: mg,
+          exercises: selectedExercisesByDay[`${day.id}_${mg}`] || []
+        }))
+        .filter(g => g.exercises.length > 0);
       return { dayId: day.id, label: day.label, exercises };
     });
 
@@ -108,11 +167,26 @@ export default function Dashboard() {
   }
 
   function resetForm() {
+    setStep(1);
     setFormat("fullbody");
-    setSelectedMusclesByDay({});
-    setSelectedExercisesByDay({});
+    setMusclesByFormat({});
+    setExercisesByFormat({});
     setWorkoutId(null);
     router.push("/dashboard");
+  }
+
+  function goNext() {
+    if (step === 2 && totalExercises === 0) {
+      setToast({ message: "Selecione ao menos um exercício para continuar.", type: "error" });
+      return;
+    }
+    setStep(s => Math.min(3, s + 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goBack() {
+    setStep(s => Math.max(1, s - 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   if (loading) {
@@ -137,49 +211,96 @@ export default function Dashboard() {
           </h1>
         </div>
 
-        <div className="space-y-4">
-          {/* Step 1 */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
-            <StepLabel number="1" label="Escolha o formato" />
-            <FormatSelector value={format} onChange={f => { setFormat(f); setSelectedMusclesByDay({}); setSelectedExercisesByDay({}); }} />
-          </div>
+        <StepIndicator step={step} onGoto={setStep} />
 
-          {/* Step 2 — grupos + exercícios juntos */}
-          <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
-            <StepLabel number="2" label="Grupos e exercícios" />
-            <WorkoutDayBuilder
-              format={format}
-              selectedMusclesByDay={selectedMusclesByDay}
-              selectedExercisesByDay={selectedExercisesByDay}
-              onMusclesChange={setSelectedMusclesByDay}
-              onExercisesChange={setSelectedExercisesByDay}
-            />
-          </div>
+        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-4">
+          {step === 1 && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">
+                Escolha o formato do treino
+              </p>
+              <FormatSelector
+                value={format}
+                onChange={setFormat}
+              />
+            </>
+          )}
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 pb-6">
+          {step === 2 && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">
+                Selecione os grupos e exercícios
+              </p>
+              <WorkoutGroupSelector
+                format={format}
+                selectedMusclesByDay={selectedMusclesByDay}
+                selectedExercisesByDay={selectedExercisesByDay}
+                onMusclesChange={setMusclesByDay}
+                onExercisesChange={setExercisesByDay}
+              />
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">
+                Defina a ordem, séries e cargas
+              </p>
+              <WorkoutArranger
+                format={format}
+                selectedMusclesByDay={selectedMusclesByDay}
+                selectedExercisesByDay={selectedExercisesByDay}
+                onMusclesChange={setMusclesByDay}
+                onExercisesChange={setExercisesByDay}
+              />
+            </>
+          )}
+        </div>
+
+        {/* Navegação do wizard */}
+        <div className="flex flex-col sm:flex-row gap-3 py-6">
+          {step > 1 && (
+            <button
+              onClick={goBack}
+              className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+              Voltar
+            </button>
+          )}
+
+          {step < 3 ? (
+            <button
+              onClick={goNext}
+              className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              Continuar
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+            </button>
+          ) : (
             <button
               onClick={save}
-              disabled={saving}
+              disabled={saving || totalExercises === 0}
               className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50"
             >
               {saving ? "Salvando..." : workoutId ? "Atualizar treino" : "Salvar treino"}
             </button>
-            {workoutId && (
-              <button
-                onClick={resetForm}
-                className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors"
-              >
-                Novo treino
-              </button>
-            )}
-            <Link
-              href="/my-workouts"
-              className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors flex items-center justify-center"
+          )}
+
+          {workoutId && (
+            <button
+              onClick={resetForm}
+              className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors"
             >
-              Ver meus treinos
-            </Link>
-          </div>
+              Novo treino
+            </button>
+          )}
+          <Link
+            href="/my-workouts"
+            className="py-3.5 px-5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-sm rounded-xl transition-colors flex items-center justify-center"
+          >
+            Ver meus treinos
+          </Link>
         </div>
       </div>
 
