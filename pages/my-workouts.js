@@ -8,6 +8,8 @@ export default function MyWorkouts() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [workouts, setWorkouts] = useState([]);
+  const [sessionCounts, setSessionCounts] = useState({});
+  const [dayCounts, setDayCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [expandedIds, setExpandedIds] = useState({});
@@ -18,12 +20,27 @@ export default function MyWorkouts() {
 
   useEffect(() => {
     if (!session) return;
-    fetch(`/api/workouts?email=${session.user.email}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setWorkouts(Array.isArray(data) ? data : []);
+    Promise.all([
+      fetch(`/api/workouts?email=${session.user.email}`).then((r) => r.json()),
+      fetch(`/api/sessions?email=${session.user.email}`).then((r) => r.json()),
+    ])
+      .then(([workoutsData, sessionsData]) => {
+        setWorkouts(Array.isArray(workoutsData) ? workoutsData : []);
+        const counts = {};
+        const dCounts = {};
+        (Array.isArray(sessionsData) ? sessionsData : []).forEach((s) => {
+          if (s.workoutId == null) return;
+          counts[s.workoutId] = (counts[s.workoutId] || 0) + 1;
+          if (s.dayId != null) {
+            const k = `${s.workoutId}_${s.dayId}`;
+            dCounts[k] = (dCounts[k] || 0) + 1;
+          }
+        });
+        setSessionCounts(counts);
+        setDayCounts(dCounts);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, [session]);
 
   if (status === "loading") return null;
@@ -80,6 +97,7 @@ export default function MyWorkouts() {
             {workouts.map((workout) => {
               const formatConfig = formatConfigs[workout.format]
               const isOpen = !!expandedIds[workout.id]
+              const doneCount = sessionCounts[workout.id] || 0
               return (
                 <div key={workout.id} className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl overflow-hidden">
                   {/* Header clicável */}
@@ -108,12 +126,27 @@ export default function MyWorkouts() {
                         )}
                       </div>
                     </div>
-                    <svg
-                      className={`w-5 h-5 text-zinc-500 flex-shrink-0 ml-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                      <span
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide ${
+                          doneCount > 0
+                            ? 'bg-red-600/15 text-red-400 border border-red-900/60'
+                            : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                        }`}
+                        title="Sessões já realizadas deste treino"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {doneCount} {doneCount === 1 ? 'sessão' : 'sessões'}
+                      </span>
+                      <svg
+                        className={`w-5 h-5 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </button>
 
                   {/* Conteúdo expansível */}
@@ -143,11 +176,24 @@ export default function MyWorkouts() {
                             const seriesCount = day.exercises.reduce((dt, mg) =>
                               dt + mg.exercises.reduce((mt, ex) =>
                                 mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0)
+                            const dayDone = dayCounts[`${workout.id}_${day.dayId}`] || 0
                             return (
                             <div key={day.dayId} className="bg-[#232323] rounded-xl p-4 border border-zinc-800">
-                              <div className="flex items-center justify-between mb-3">
-                                <p className="text-xs font-semibold uppercase tracking-widest text-red-500">{day.label}</p>
-                                <span className="text-xs text-zinc-500">{exCount} ex · {seriesCount} séries</span>
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className="text-xs font-semibold uppercase tracking-widest text-red-500 truncate">{day.label}</p>
+                                  <span
+                                    className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${
+                                      dayDone > 0
+                                        ? 'bg-red-600/15 text-red-400 border border-red-900/60'
+                                        : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                                    }`}
+                                    title="Vezes que você já fez este dia"
+                                  >
+                                    {dayDone}× feito
+                                  </span>
+                                </div>
+                                <span className="text-xs text-zinc-500 flex-shrink-0">{exCount} ex · {seriesCount} séries</span>
                               </div>
                               <div className="space-y-2">
                                 {day.exercises.map(mg => (
