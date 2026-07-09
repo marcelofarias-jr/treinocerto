@@ -2,7 +2,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useState, useMemo } from 'react'
 import { muscleGroupLabels } from '../lib/workoutConfig'
-import { todayFortaleza, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays } from '../lib/dates'
+import { todayFortaleza, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addMonths } from '../lib/dates'
 
 function fmtDuration(s) {
   const h = Math.floor(s / 3600)
@@ -39,6 +39,7 @@ export default function Stats() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('week')
+  const [periodAnchor, setPeriodAnchor] = useState(() => todayFortaleza())
   const [selectedEx, setSelectedEx] = useState('')
   const [bodyWeights, setBodyWeights] = useState([])
   const [weightDate, setWeightDate] = useState(() => todayFortaleza())
@@ -107,10 +108,27 @@ export default function Stats() {
   const longestSession = sessions.reduce((max, s) => Math.max(max, s.duration || 0), 0)
 
   // ── Período filtrado ──
-  // Semana: segunda → domingo da semana atual. Mês: dia 1 → último dia do mês atual.
+  // Semana: segunda → domingo. Mês: dia 1 → último dia. A âncora (periodAnchor)
+  // permite navegar para semanas/meses específicos do histórico.
   const todayStr = todayFortaleza()
-  const periodStartStr = period === 'week' ? startOfWeek(todayStr) : startOfMonth(todayStr)
-  const periodEndStr   = period === 'week' ? endOfWeek(todayStr)   : endOfMonth(todayStr)
+  const periodStartStr = period === 'week' ? startOfWeek(periodAnchor) : startOfMonth(periodAnchor)
+  const periodEndStr   = period === 'week' ? endOfWeek(periodAnchor)   : endOfMonth(periodAnchor)
+
+  // Não é possível avançar para um período que ainda não começou.
+  const isCurrentPeriod = todayStr >= periodStartStr && todayStr <= periodEndStr
+  const canGoNext = periodEndStr < todayStr
+
+  function shiftPeriod(dir) {
+    setPeriodAnchor(a => (period === 'week' ? addDays(a, dir * 7) : addMonths(a, dir)))
+  }
+
+  const periodLabel = period === 'week'
+    ? (() => {
+        const [, sm, sd] = periodStartStr.split('-')
+        const [, em, ed] = periodEndStr.split('-')
+        return `${parseInt(sd, 10)}/${parseInt(sm, 10)} – ${parseInt(ed, 10)}/${parseInt(em, 10)}`
+      })()
+    : new Date(periodStartStr + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
   const pSessions  = sessions.filter(s => s.date >= periodStartStr && s.date <= periodEndStr)
   const pSets      = pSessions.flatMap(s => (s.exercisesData || []).flatMap(e => (e.sets || []).filter(set => set.done)))
@@ -231,7 +249,7 @@ export default function Stats() {
                 <h2 className="font-heading font-black text-lg uppercase text-white">Período</h2>
                 <div className="flex gap-1 bg-zinc-900 rounded-lg p-1">
                   {['week', 'month'].map(p => (
-                    <button key={p} onClick={() => setPeriod(p)}
+                    <button key={p} onClick={() => { setPeriod(p); setPeriodAnchor(todayFortaleza()) }}
                       className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${period === p ? 'bg-red-600 text-white' : 'text-zinc-300 hover:text-white'}`}
                     >
                       {p === 'week' ? 'Semana' : 'Mês'}
@@ -239,6 +257,39 @@ export default function Stats() {
                   ))}
                 </div>
               </div>
+
+              {/* Navegação de período */}
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() => shiftPeriod(-1)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors"
+                  aria-label={period === 'week' ? 'Semana anterior' : 'Mês anterior'}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-heading font-bold uppercase tracking-widest text-white text-sm text-center capitalize">{periodLabel}</span>
+                  {isCurrentPeriod && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 bg-red-600 text-white rounded uppercase tracking-widest flex-shrink-0">Atual</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => shiftPeriod(1)}
+                  disabled={!canGoNext}
+                  className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-300"
+                  aria-label={period === 'week' ? 'Próxima semana' : 'Próximo mês'}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+
+              {pSessions.length === 0 && (
+                <p className="text-zinc-500 text-xs text-center py-2 mb-2">Nenhum treino neste período.</p>
+              )}
               <div className="grid grid-cols-3 gap-2">
                 <PeriodCard label="Treinos"     value={pSessions.length} />
                 <PeriodCard label="Exercícios"  value={pExercises} />
