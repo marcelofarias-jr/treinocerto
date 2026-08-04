@@ -59,6 +59,19 @@ export default function MyWorkouts() {
     setConfirmDeleteId(null);
   }
 
+  async function setActive(id) {
+    setWorkouts((ws) => ws.map((w) => ({ ...w, isActive: w.id === id })));
+    await fetch("/api/workouts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, email: session.user.email }),
+    });
+  }
+
+  // Ativo efetivo: o marcado ou, na ausência, o mais recente (último criado).
+  const activeId =
+    workouts.find((w) => w.isActive)?.id ?? workouts[workouts.length - 1]?.id;
+
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -98,8 +111,9 @@ export default function MyWorkouts() {
               const formatConfig = formatConfigs[workout.format]
               const isOpen = !!expandedIds[workout.id]
               const doneCount = sessionCounts[workout.id] || 0
+              const isActive = workout.id === activeId
               return (
-                <div key={workout.id} className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl overflow-hidden">
+                <div key={workout.id} className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden ${isActive ? 'border-red-600' : 'border-zinc-800'}`}>
                   {/* Header clicável */}
                   <button
                     onClick={() => toggleExpanded(workout.id)}
@@ -110,9 +124,16 @@ export default function MyWorkouts() {
                         <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-0.5">
                           {new Date(workout.createdAt).toLocaleDateString("pt-BR")}
                         </p>
-                        <h2 className="font-heading font-black text-xl uppercase text-white leading-tight">
-                          {formatConfig?.name || workout.format}
-                        </h2>
+                        <div className="flex items-center gap-2">
+                          <h2 className="font-heading font-black text-xl uppercase text-white leading-tight">
+                            {formatConfig?.name || workout.format}
+                          </h2>
+                          {isActive && (
+                            <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded flex-shrink-0">
+                              Ativo
+                            </span>
+                          )}
+                        </div>
                         {workout.days && (
                           <p className="text-zinc-400 text-xs mt-0.5">
                             {workout.days.length} {workout.days.length === 1 ? 'dia' : 'dias'}
@@ -153,7 +174,20 @@ export default function MyWorkouts() {
                   {isOpen && (
                     <div className="border-t border-zinc-800 px-5 pb-5 pt-4">
                       {/* Ações */}
-                      <div className="flex gap-2 mb-4">
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {isActive ? (
+                          <span className="px-4 py-2 border border-red-900/60 bg-red-600/15 text-red-400 text-xs font-semibold uppercase tracking-wide rounded-lg flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            Treino ativo
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setActive(workout.id)}
+                            className="px-4 py-2 border border-zinc-700 hover:border-red-600 text-zinc-300 hover:text-red-400 text-xs font-semibold uppercase tracking-wide rounded-lg transition-colors"
+                          >
+                            Definir como ativo
+                          </button>
+                        )}
                         <button
                           onClick={() => router.push(`/dashboard?edit=${workout.id}`)}
                           className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wide rounded-lg transition-colors"

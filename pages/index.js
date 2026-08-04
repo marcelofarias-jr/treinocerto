@@ -236,7 +236,8 @@ export default function Home() {
     ]).then(([workouts, sessions]) => {
       const ws = Array.isArray(workouts) ? workouts : []
       const ss = Array.isArray(sessions) ? sessions : []
-      if (ws.length > 0) setWorkout(ws[ws.length - 1])
+      // Treino ativo marcado; senão, o mais recente (cobre "só há um treino").
+      if (ws.length > 0) setWorkout(ws.find(w => w.isActive) || ws[ws.length - 1])
       setAllSessions(ss)
       setLoadingData(false)
     })

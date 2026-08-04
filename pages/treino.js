@@ -182,7 +182,8 @@ export default function Treino() {
       fetch(`/api/workouts?email=${session.user.email}`).then(r => r.json()),
       fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json()),
     ]).then(([ws, ss]) => {
-      const w = ws.length > 0 ? ws[ws.length - 1] : null
+      // Treino ativo marcado; senão, o mais recente (cobre "só há um treino").
+      const w = ws.length > 0 ? (ws.find(x => x.isActive) || ws[ws.length - 1]) : null
       const sessions = Array.isArray(ss) ? ss : []
       setWorkout(w)
       setAllSessions(sessions)

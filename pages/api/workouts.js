@@ -31,6 +31,27 @@ export default async function handler(req, res) {
     return res.status(200).json(normalizeWorkout(data))
   }
 
+  if (req.method === 'PATCH') {
+    // Define o treino ativo do usuário (desmarca os demais).
+    const { id, email } = req.body
+    if (!id || !email) return res.status(400).json({ error: 'id e email obrigatórios' })
+
+    const { error: clearError } = await supabase
+      .from('workouts')
+      .update({ is_active: false })
+      .eq('user_email', email)
+    if (clearError) return res.status(500).json({ error: clearError.message })
+
+    const { error } = await supabase
+      .from('workouts')
+      .update({ is_active: true })
+      .eq('id', id)
+      .eq('user_email', email)
+    if (error) return res.status(500).json({ error: error.message })
+
+    return res.status(200).json({ ok: true })
+  }
+
   if (req.method === 'DELETE') {
     const { id } = req.body
     if (!id) return res.status(400).json({ error: 'ID required' })
@@ -48,6 +69,7 @@ function normalizeWorkout(row) {
     id: row.id,
     format: row.format,
     days: row.days,
+    isActive: !!row.is_active,
     user: { email: row.user_email },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
