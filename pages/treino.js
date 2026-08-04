@@ -683,29 +683,29 @@ export default function Treino() {
 
               {/* Lista de exercícios */}
               <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                {previewDay.exercises.map(mg => {
-                  const exList = mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
-                  return (
-                    <div key={mg.muscleGroup}>
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                        {muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup}
-                      </p>
-                      <div className="space-y-1.5">
-                        {exList.map((ex, i) => (
-                          <div key={i} className="flex items-center gap-3 py-1.5 border-b border-zinc-800/50 last:border-0">
-                            <span className="text-xs font-mono text-zinc-600 w-4 text-right flex-shrink-0">{i + 1}</span>
-                            <span className="text-sm text-zinc-200 flex-1">{ex.name}</span>
-                            {(ex.series || ex.repeticoes) && (
-                              <span className="text-xs text-zinc-500 flex-shrink-0">
-                                {ex.series && `${ex.series}×`}{ex.repeticoes && `${ex.repeticoes}`}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                <div className="space-y-1.5">
+                  {previewDay.exercises
+                    .flatMap(mg => mg.exercises.map(ex => ({
+                      ...(typeof ex === 'string' ? { name: ex } : ex),
+                      muscleGroup: mg.muscleGroup,
+                    })))
+                    .map((ex, i) => (
+                      <div key={i} className="flex items-center gap-3 py-1.5 border-b border-zinc-800/50 last:border-0">
+                        <span className="text-xs font-mono text-zinc-600 w-4 text-right flex-shrink-0">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block leading-none">
+                            {muscleGroupLabels[ex.muscleGroup] || ex.muscleGroup}
+                          </span>
+                          <span className="text-sm text-zinc-200">{ex.name}</span>
+                        </div>
+                        {(ex.series || ex.repeticoes) && (
+                          <span className="text-xs text-zinc-500 flex-shrink-0">
+                            {ex.series && `${ex.series}×`}{ex.repeticoes && `${ex.repeticoes}`}
+                          </span>
+                        )}
                       </div>
-                    </div>
-                  )
-                })}
+                    ))}
+                </div>
               </div>
 
               {/* Ações */}
@@ -893,7 +893,7 @@ export default function Treino() {
             <div className="flex-1 min-w-0 mr-6">
               <p className="text-xs text-zinc-400 uppercase tracking-widest mb-2">Treino de hoje · {day.dayId}</p>
               <h1 className="font-heading font-black text-3xl md:text-4xl uppercase text-white leading-tight">
-                {day.exercises.map(mg => (muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup).toUpperCase()).join(' · ')}
+                {[...new Set(day.exercises.map(mg => (muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup).toUpperCase()))].join(' · ')}
               </h1>
               <div className="flex items-center gap-5 mt-3">
                 <span className="flex items-center gap-1.5 text-xs text-zinc-300">

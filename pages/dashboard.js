@@ -7,12 +7,11 @@ import WorkoutGroupSelector from "../components/WorkoutGroupSelector";
 import WorkoutArranger from "../components/WorkoutArranger";
 import WorkoutReview from "../components/WorkoutReview";
 import Toast from "../components/Toast";
-import { formatConfigs, getFormatConfig, getVariant } from "../lib/workoutConfig";
+import { formatConfigs, getFormatConfig, getVariant, blocksToFlat, flatToBlocks } from "../lib/workoutConfig";
 
 function normalizeExercise(item) {
-  return typeof item === "string"
-    ? { name: item, carga: "", repeticoes: "", observacoes: "" }
-    : item;
+  const base = typeof item === "string" ? { name: item } : item;
+  return { series: "3", repeticoes: "", carga: "", descanso: "60", observacoes: "", ...base };
 }
 
 const STEPS = [
@@ -79,6 +78,9 @@ export default function Dashboard() {
   // passo 1 ou alternar entre formatos.
   const [musclesByFormat, setMusclesByFormat] = useState({}); // { [format]: { [dayId]: mg[] } }
   const [exercisesByFormat, setExercisesByFormat] = useState({}); // { [format]: { [key]: item[] } }
+  // Sequência final por dia: lista plana ordenada livremente (ordem de execução),
+  // cada item com seu muscleGroup. É a fonte da ordem/cargas ao salvar.
+  const [sequenceByFormat, setSequenceByFormat] = useState({}); // { [format]: { [dayId]: item[] } }
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!edit);
   const [workoutId, setWorkoutId] = useState(null);
@@ -97,15 +99,25 @@ export default function Dashboard() {
             if (Array.isArray(workout.days)) {
               const musclesByDay = {};
               const exercisesByDay = {};
+              const seqByDay = {};
               workout.days.forEach(day => {
-                musclesByDay[day.dayId] = day.exercises.map(e => e.muscleGroup);
+                // Seleção (passo 2): grupos únicos e exercícios por grupo.
+                const seenGroups = [];
                 day.exercises.forEach(e => {
+                  if (!seenGroups.includes(e.muscleGroup)) seenGroups.push(e.muscleGroup);
                   const key = `${day.dayId}_${e.muscleGroup}`;
-                  exercisesByDay[key] = e.exercises.map(normalizeExercise);
+                  exercisesByDay[key] = [
+                    ...(exercisesByDay[key] || []),
+                    ...e.exercises.map(normalizeExercise),
+                  ];
                 });
+                musclesByDay[day.dayId] = seenGroups;
+                // Sequência (passo 3/4): ordem plana exatamente como salva.
+                seqByDay[day.dayId] = blocksToFlat(day.exercises).map(normalizeExercise);
               });
               setMusclesByFormat({ [workout.format]: musclesByDay });
               setExercisesByFormat({ [workout.format]: exercisesByDay });
+              setSequenceByFormat({ [workout.format]: seqByDay });
             } else {
               setExercisesByFormat({ [workout.format]: { "1": (workout.exercises || []).map(normalizeExercise) } });
             }
@@ -128,11 +140,14 @@ export default function Dashboard() {
   // Visão do formato atualmente selecionado.
   const selectedMusclesByDay = musclesByFormat[format] || {};
   const selectedExercisesByDay = exercisesByFormat[format] || {};
+  const selectedSequenceByDay = sequenceByFormat[format] || {};
 
   const setMusclesByDay = (next) =>
     setMusclesByFormat((prev) => ({ ...prev, [format]: next }));
   const setExercisesByDay = (next) =>
     setExercisesByFormat((prev) => ({ ...prev, [format]: next }));
+  const setSequenceByDay = (next) =>
+    setSequenceByFormat((prev) => ({ ...prev, [format]: next }));
 
   // Conta apenas os exercícios dos dias visíveis na variante atual (evita
   // contar dados órfãos de uma variante maior escolhida antes).
@@ -144,18 +159,32 @@ export default function Dashboard() {
     );
   }, 0);
 
+  // Reconcilia a sequência plana com a seleção do passo 2: preserva a ordem
+  // e as cargas já definidas, adiciona exercícios novos ao final e remove os
+  // que foram desmarcados. Executado ao avançar para o passo de ordenação.
+  function syncSequence() {
+    const next = {};
+    config.days.forEach((day) => {
+      const selection = (selectedMusclesByDay[day.id] || []).flatMap((mg) =>
+        (selectedExercisesByDay[`${day.id}_${mg}`] || []).map((ex) => ({ ...ex, muscleGroup: mg }))
+      );
+      const k = (it) => `${it.muscleGroup}|${it.name}`;
+      const selKeys = new Set(selection.map(k));
+      const kept = (selectedSequenceByDay[day.id] || []).filter((it) => selKeys.has(k(it)));
+      const keptKeys = new Set(kept.map(k));
+      const added = selection.filter((it) => !keptKeys.has(k(it)));
+      next[day.id] = [...kept, ...added];
+    });
+    setSequenceByDay(next);
+  }
+
   async function save() {
     setSaving(true);
-    const days = config.days.map(day => {
-      const muscleGroups = selectedMusclesByDay[day.id] || [];
-      const exercises = muscleGroups
-        .map(mg => ({
-          muscleGroup: mg,
-          exercises: selectedExercisesByDay[`${day.id}_${mg}`] || []
-        }))
-        .filter(g => g.exercises.length > 0);
-      return { dayId: day.id, label: day.label, exercises };
-    });
+    const days = config.days.map(day => ({
+      dayId: day.id,
+      label: day.label,
+      exercises: flatToBlocks(selectedSequenceByDay[day.id] || []),
+    }));
 
     const payload = { format, days, user: session.user };
 
@@ -190,14 +219,19 @@ export default function Dashboard() {
     setVariant(null);
     setMusclesByFormat({});
     setExercisesByFormat({});
+    setSequenceByFormat({});
     setWorkoutId(null);
     router.push("/dashboard");
   }
 
   function goNext() {
-    if (step === 2 && totalExercises === 0) {
-      setToast({ message: "Selecione ao menos um exercício para continuar.", type: "error" });
-      return;
+    if (step === 2) {
+      if (totalExercises === 0) {
+        setToast({ message: "Selecione ao menos um exercício para continuar.", type: "error" });
+        return;
+      }
+      // Ao sair da seleção, monta/atualiza a sequência ordenável.
+      syncSequence();
     }
     setStep(s => Math.min(LAST_STEP, s + 1));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -301,10 +335,8 @@ export default function Dashboard() {
               <WorkoutArranger
                 format={format}
                 variant={variant}
-                selectedMusclesByDay={selectedMusclesByDay}
-                selectedExercisesByDay={selectedExercisesByDay}
-                onMusclesChange={setMusclesByDay}
-                onExercisesChange={setExercisesByDay}
+                sequenceByDay={selectedSequenceByDay}
+                onSequenceChange={setSequenceByDay}
               />
             </>
           )}
@@ -317,10 +349,8 @@ export default function Dashboard() {
               <WorkoutReview
                 format={format}
                 variant={variant}
-                selectedMusclesByDay={selectedMusclesByDay}
-                selectedExercisesByDay={selectedExercisesByDay}
-                onMusclesChange={setMusclesByDay}
-                onExercisesChange={setExercisesByDay}
+                sequenceByDay={selectedSequenceByDay}
+                onSequenceChange={setSequenceByDay}
               />
             </>
           )}

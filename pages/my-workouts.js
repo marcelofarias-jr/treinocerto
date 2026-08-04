@@ -196,8 +196,8 @@ export default function MyWorkouts() {
                                 <span className="text-xs text-zinc-500 flex-shrink-0">{exCount} ex · {seriesCount} séries</span>
                               </div>
                               <div className="space-y-2">
-                                {day.exercises.map(mg => (
-                                  <div key={mg.muscleGroup}>
+                                {day.exercises.map((mg, gi) => (
+                                  <div key={gi}>
                                     <p className="text-xs text-zinc-400 uppercase tracking-widest mb-1">
                                       {muscleGroupLabels[mg.muscleGroup] || mg.muscleGroup}
                                     </p>
