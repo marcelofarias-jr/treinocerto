@@ -5,8 +5,9 @@ import Link from "next/link";
 import FormatSelector from "../components/FormatSelector";
 import WorkoutGroupSelector from "../components/WorkoutGroupSelector";
 import WorkoutArranger from "../components/WorkoutArranger";
+import WorkoutReview from "../components/WorkoutReview";
 import Toast from "../components/Toast";
-import { formatConfigs } from "../lib/workoutConfig";
+import { formatConfigs, getFormatConfig, getVariant } from "../lib/workoutConfig";
 
 function normalizeExercise(item) {
   return typeof item === "string"
@@ -18,7 +19,10 @@ const STEPS = [
   { n: 1, label: "Formato" },
   { n: 2, label: "Grupos e exercícios" },
   { n: 3, label: "Ordem e cargas" },
+  { n: 4, label: "Revisar" },
 ];
+
+const LAST_STEP = STEPS.length;
 
 function StepIndicator({ step, onGoto }) {
   return (
@@ -70,6 +74,7 @@ export default function Dashboard() {
   const { edit } = router.query;
   const [step, setStep] = useState(1);
   const [format, setFormat] = useState("fullbody");
+  const [variant, setVariant] = useState(null); // variante do formato (ex: 2 ou 4 dias no Upper/Lower)
   // Dados guardados por formato, para não perder as seleções ao voltar ao
   // passo 1 ou alternar entre formatos.
   const [musclesByFormat, setMusclesByFormat] = useState({}); // { [format]: { [dayId]: mg[] } }
@@ -88,6 +93,7 @@ export default function Dashboard() {
           const workout = workouts.find((w) => w.id === parseInt(edit));
           if (workout) {
             setFormat(workout.format);
+            setVariant(getVariant(workout.format, workout.days));
             if (Array.isArray(workout.days)) {
               const musclesByDay = {};
               const exercisesByDay = {};
@@ -116,6 +122,9 @@ export default function Dashboard() {
     return null;
   }
 
+  // Config resolvida para o formato + variante atuais.
+  const config = getFormatConfig(format, variant);
+
   // Visão do formato atualmente selecionado.
   const selectedMusclesByDay = musclesByFormat[format] || {};
   const selectedExercisesByDay = exercisesByFormat[format] || {};
@@ -125,14 +134,18 @@ export default function Dashboard() {
   const setExercisesByDay = (next) =>
     setExercisesByFormat((prev) => ({ ...prev, [format]: next }));
 
-  const totalExercises = Object.values(selectedExercisesByDay).reduce(
-    (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
-    0
-  );
+  // Conta apenas os exercícios dos dias visíveis na variante atual (evita
+  // contar dados órfãos de uma variante maior escolhida antes).
+  const totalExercises = config.days.reduce((sum, day) => {
+    const mgs = selectedMusclesByDay[day.id] || [];
+    return sum + mgs.reduce(
+      (s, mg) => s + (selectedExercisesByDay[`${day.id}_${mg}`]?.length || 0),
+      0
+    );
+  }, 0);
 
   async function save() {
     setSaving(true);
-    const config = formatConfigs[format];
     const days = config.days.map(day => {
       const muscleGroups = selectedMusclesByDay[day.id] || [];
       const exercises = muscleGroups
@@ -166,9 +179,15 @@ export default function Dashboard() {
     setTimeout(() => router.push("/my-workouts"), 1200);
   }
 
+  function changeFormat(f) {
+    setFormat(f);
+    setVariant(formatConfigs[f]?.defaultVariant ?? null);
+  }
+
   function resetForm() {
     setStep(1);
     setFormat("fullbody");
+    setVariant(null);
     setMusclesByFormat({});
     setExercisesByFormat({});
     setWorkoutId(null);
@@ -180,7 +199,7 @@ export default function Dashboard() {
       setToast({ message: "Selecione ao menos um exercício para continuar.", type: "error" });
       return;
     }
-    setStep(s => Math.min(3, s + 1));
+    setStep(s => Math.min(LAST_STEP, s + 1));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -221,8 +240,40 @@ export default function Dashboard() {
               </p>
               <FormatSelector
                 value={format}
-                onChange={setFormat}
+                onChange={changeFormat}
               />
+
+              {/* Seletor de variante (nº de dias) para formatos com variantes */}
+              {formatConfigs[format]?.variants && (
+                <div className="mt-4 border-t border-zinc-800 pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
+                    Quantos dias por ciclo?
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.keys(formatConfigs[format].variants).map((v) => {
+                      const n = Number(v);
+                      const active = (variant ?? formatConfigs[format].defaultVariant) === n;
+                      const ids = formatConfigs[format].variants[n].map((d) => d.id).join("/");
+                      return (
+                        <button
+                          key={v}
+                          onClick={() => setVariant(n)}
+                          className={`p-4 rounded-xl border text-left transition-all ${
+                            active
+                              ? "border-red-600 bg-red-950/20"
+                              : "border-zinc-800 bg-[#232323] hover:border-zinc-600"
+                          }`}
+                        >
+                          <p className="font-heading font-black text-white text-lg uppercase tracking-wide">
+                            {n} dias
+                          </p>
+                          <p className="text-zinc-500 text-xs mt-0.5">Dias {ids}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -233,6 +284,7 @@ export default function Dashboard() {
               </p>
               <WorkoutGroupSelector
                 format={format}
+                variant={variant}
                 selectedMusclesByDay={selectedMusclesByDay}
                 selectedExercisesByDay={selectedExercisesByDay}
                 onMusclesChange={setMusclesByDay}
@@ -248,6 +300,23 @@ export default function Dashboard() {
               </p>
               <WorkoutArranger
                 format={format}
+                variant={variant}
+                selectedMusclesByDay={selectedMusclesByDay}
+                selectedExercisesByDay={selectedExercisesByDay}
+                onMusclesChange={setMusclesByDay}
+                onExercisesChange={setExercisesByDay}
+              />
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">
+                Revise a sequência antes de salvar
+              </p>
+              <WorkoutReview
+                format={format}
+                variant={variant}
                 selectedMusclesByDay={selectedMusclesByDay}
                 selectedExercisesByDay={selectedExercisesByDay}
                 onMusclesChange={setMusclesByDay}
@@ -269,7 +338,7 @@ export default function Dashboard() {
             </button>
           )}
 
-          {step < 3 ? (
+          {step < LAST_STEP ? (
             <button
               onClick={goNext}
               className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2"

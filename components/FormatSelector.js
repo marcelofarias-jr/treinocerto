@@ -13,9 +13,9 @@ const FORMATS = [
     code: 'UL',
     num: '02',
     name: 'UPPER / LOWER',
-    desc: 'Alterna superiores e inferiores. Equilíbrio entre volume e recuperação.',
-    freq: '4X / SEMANA',
-    days: ['UPPER A', 'LOWER A', 'UPPER B', 'LOWER B'],
+    desc: 'Alterna superiores e inferiores. Escolha A/B (2 dias) ou A/B/C/D (4 dias).',
+    freq: '2–4X / SEMANA',
+    days: ['UPPER', 'LOWER'],
   },
   {
     id: 'ppl',

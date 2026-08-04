@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { formatConfigs, exercisesByMuscleGroup, muscleGroupLabels } from '../lib/workoutConfig'
+import { getFormatConfig, exercisesByMuscleGroup, muscleGroupLabels } from '../lib/workoutConfig'
 
 /*
  * PASSO 2 — Seleção de grupos musculares e exercícios (sem ordenação/config).
@@ -8,13 +8,14 @@ import { formatConfigs, exercisesByMuscleGroup, muscleGroupLabels } from '../lib
  */
 export default function WorkoutGroupSelector({
   format,
+  variant,
   selectedMusclesByDay,
   selectedExercisesByDay,
   onMusclesChange,
   onExercisesChange,
 }) {
   const { data: session } = useSession()
-  const config = formatConfigs[format]
+  const config = getFormatConfig(format, variant)
 
   const [customExercises, setCustomExercises] = useState({}) // { muscleGroup: {id,name}[] }
   const [hiddenExercises, setHiddenExercises] = useState(new Set())

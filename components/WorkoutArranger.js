@@ -1,5 +1,6 @@
-import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
+import { getFormatConfig, muscleGroupLabels } from '../lib/workoutConfig'
 import SortableList from './SortableList'
+import PositionInput from './PositionInput'
 
 /* Ícone de alça de arraste */
 function GripIcon({ className = '' }) {
@@ -26,12 +27,13 @@ function move(arr, from, to) {
  */
 export default function WorkoutArranger({
   format,
+  variant,
   selectedMusclesByDay,
   selectedExercisesByDay,
   onMusclesChange,
   onExercisesChange,
 }) {
-  const config = formatConfigs[format]
+  const config = getFormatConfig(format, variant)
   if (!config) return null
 
   function reorderGroups(dayId, from, to) {
@@ -42,6 +44,13 @@ export default function WorkoutArranger({
   function reorderExercise(key, from, to) {
     const current = selectedExercisesByDay[key] || []
     onExercisesChange({ ...selectedExercisesByDay, [key]: move(current, from, to) })
+  }
+
+  // Move o exercício para a posição digitada (1-indexada dentro do grupo).
+  function setExercisePosition(key, from, n) {
+    const len = (selectedExercisesByDay[key] || []).length
+    const to = Math.min(Math.max(n, 1), len) - 1
+    if (to !== from) reorderExercise(key, from, to)
   }
 
   function updateField(key, exercise, field, value) {
@@ -159,7 +168,13 @@ export default function WorkoutArranger({
                                 >
                                   <GripIcon className="w-4 h-4" />
                                 </span>
-                                <span className="text-[10px] font-mono text-zinc-600 flex-shrink-0 w-4 text-right">{idx + 1}</span>
+                                <PositionInput
+                                  value={idx + 1}
+                                  max={selected.length}
+                                  onCommit={n => setExercisePosition(key, idx, n)}
+                                  title="Posição na sequência"
+                                  className="!px-0 !py-0.5 w-8 text-center text-[11px] font-mono font-bold text-zinc-300 flex-shrink-0"
+                                />
                                 <p className="text-xs text-zinc-100 font-semibold truncate flex-1">{item.name}</p>
                                 <div className="flex gap-1 flex-shrink-0">
                                   <button onClick={() => reorderExercise(key, idx, idx - 1)} disabled={idx === 0}
