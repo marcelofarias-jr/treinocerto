@@ -20,7 +20,7 @@ export default function Toast({ message, type = 'success', onClose }) {
   }, [onClose])
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-[#1a1a1a] border border-zinc-700 shadow-2xl rounded-xl px-4 py-3 text-sm text-zinc-200 max-w-xs">
+    <div className="fixed bottom-28 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-3 bg-[#1a1a1a] border border-zinc-700 shadow-2xl rounded-xl px-4 py-3 text-sm text-zinc-200 max-w-xs">
       {ICONS[type]}
       <span>{message}</span>
       <button onClick={onClose} className="ml-auto text-zinc-600 hover:text-zinc-400 transition-colors">

@@ -2,6 +2,7 @@ import "../styles/globals.css";
 import { SessionProvider, useSession } from "next-auth/react";
 import Head from "next/head";
 import Header from "../components/Header";
+import { ToastProvider } from "../components/ToastProvider";
 
 function AppContent({ Component, pageProps }) {
   const { data: session } = useSession();
@@ -23,7 +24,9 @@ function AppContent({ Component, pageProps }) {
       {session && <Header />}
       {/* pb-28 md:pb-0: espaço para bottom nav + barra de treino ativo no mobile */}
       <div className="pb-28 md:pb-0">
-        <Component {...pageProps} />
+        <ToastProvider>
+          <Component {...pageProps} />
+        </ToastProvider>
       </div>
     </>
   );
