@@ -2,6 +2,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { todayFortaleza, addDays } from "../lib/dates";
+import { apiFetch } from "../lib/api";
+import { useToast } from "../components/ToastProvider";
 
 // Lista de suplementos rastreados. Estruturado para crescer — hoje só creatina.
 const SUPPLEMENTS = [
@@ -13,6 +15,7 @@ const HISTORY_DAYS = 14;
 export default function Supplements() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const toast = useToast();
   const [takenByName, setTakenByName] = useState({}); // { name: Set<date> }
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null); // name em processamento
@@ -22,7 +25,7 @@ export default function Supplements() {
   useEffect(() => {
     if (!session) return;
     const from = addDays(today, -60);
-    fetch(`/api/supplements?email=${session.user.email}&from=${from}&to=${today}`)
+    fetch(`/api/supplements?from=${from}&to=${today}`)
       .then((r) => r.json())
       .then((data) => {
         const map = {};
@@ -57,25 +60,20 @@ export default function Supplements() {
 
     try {
       if (isTaken) {
-        await fetch(
-          `/api/supplements?email=${session.user.email}&date=${today}&name=${encodeURIComponent(name)}`,
-          { method: "DELETE" }
-        );
+        await apiFetch(`/api/supplements?date=${today}&name=${encodeURIComponent(name)}`, { method: "DELETE" });
       } else {
-        await fetch("/api/supplements", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userEmail: session.user.email, date: today, name }),
-        });
+        await apiFetch("/api/supplements", { json: { date: today, name } });
       }
-    } catch (_) {
-      // Reverte em caso de erro
+    } catch (err) {
+      // Reverte e avisa. Antes só falha de rede era revertida; um 4xx/5xx
+      // passava como sucesso porque fetch não lança nesses casos.
       setTakenByName((prev) => {
         const set = new Set(prev[name] || []);
         if (isTaken) set.add(today);
         else set.delete(today);
         return { ...prev, [name]: set };
       });
+      toast(err.message, "error");
     } finally {
       setBusy(null);
     }

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { getFormatConfig, exercisesByMuscleGroup, muscleGroupLabels } from '../lib/workoutConfig'
+import { apiFetch } from '../lib/api'
+import { useToast } from './ToastProvider'
 
 /*
  * PASSO 2 — Seleção de grupos musculares e exercícios (sem ordenação/config).
@@ -15,6 +17,7 @@ export default function WorkoutGroupSelector({
   onExercisesChange,
 }) {
   const { data: session } = useSession()
+  const toast = useToast()
   const config = getFormatConfig(format, variant)
 
   const [customExercises, setCustomExercises] = useState({}) // { muscleGroup: {id,name}[] }
@@ -32,7 +35,7 @@ export default function WorkoutGroupSelector({
 
   useEffect(() => {
     if (!session) return
-    fetch(`/api/exercises?email=${session.user.email}`)
+    fetch('/api/exercises')
       .then(r => r.json())
       .then(data => {
         const grouped = {}
@@ -76,19 +79,24 @@ export default function WorkoutGroupSelector({
     if (existingNames.some(e => e.toLowerCase() === name.toLowerCase())) {
       setNewExName(''); setAddingTo(null); return
     }
-    const tempId = Date.now()
+    const tempId = `tmp-${name}`
     setCustomExercises(prev => ({ ...prev, [mg]: [...(prev[mg] || []), { id: tempId, name }] }))
     setNewExName(''); setAddingTo(null)
-    const res = await fetch('/api/exercises', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userEmail: session.user.email, muscleGroup: mg, name }),
-    })
-    const saved = await res.json()
-    setCustomExercises(prev => ({
-      ...prev,
-      [mg]: (prev[mg] || []).map(e => e.id === tempId ? { id: saved.id, name: saved.name } : e),
-    }))
+    try {
+      const saved = await apiFetch('/api/exercises', { json: { muscleGroup: mg, name } })
+      setCustomExercises(prev => ({
+        ...prev,
+        [mg]: (prev[mg] || []).map(e => e.id === tempId ? { id: saved.id, name: saved.name } : e),
+      }))
+    } catch (err) {
+      // Remove o otimista: sem isso o exercício aparecia na lista e não existia
+      // no banco, então sumia no próximo carregamento.
+      setCustomExercises(prev => ({
+        ...prev,
+        [mg]: (prev[mg] || []).filter(e => e.id !== tempId),
+      }))
+      toast(err.message, 'error')
+    }
   }
 
   return (

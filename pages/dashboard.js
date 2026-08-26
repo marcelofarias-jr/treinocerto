@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Link from "next/link";
@@ -6,8 +6,9 @@ import FormatSelector from "../components/FormatSelector";
 import WorkoutGroupSelector from "../components/WorkoutGroupSelector";
 import WorkoutArranger from "../components/WorkoutArranger";
 import WorkoutReview from "../components/WorkoutReview";
-import Toast from "../components/Toast";
 import { formatConfigs, getFormatConfig, getVariant, blocksToFlat, flatToBlocks } from "../lib/workoutConfig";
+import { apiFetch } from "../lib/api";
+import { useToast } from "../components/ToastProvider";
 
 function normalizeExercise(item) {
   const base = typeof item === "string" ? { name: item } : item;
@@ -84,15 +85,14 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!edit);
   const [workoutId, setWorkoutId] = useState(null);
-  const [toast, setToast] = useState(null);
-  const closeToast = useCallback(() => setToast(null), []);
+  const toast = useToast();
 
   useEffect(() => {
     if (edit && session) {
-      fetch(`/api/workouts?email=${session.user.email}`)
-        .then((r) => r.json())
+      apiFetch('/api/workouts')
+        .catch((err) => { toast(err.message, 'error'); return []; })
         .then((workouts) => {
-          const workout = workouts.find((w) => w.id === parseInt(edit));
+          const workout = (Array.isArray(workouts) ? workouts : []).find((w) => w.id === parseInt(edit));
           if (workout) {
             setFormat(workout.format);
             setVariant(getVariant(workout.format, workout.days));
@@ -159,6 +159,13 @@ export default function Dashboard() {
     );
   }, 0);
 
+  // Dias visíveis da variante que ficaram sem nenhum exercício. Salvar um dia
+  // vazio cria um plano que não pode ser treinado, então o save é bloqueado.
+  const emptyDays = config.days.filter(day => {
+    const mgs = selectedMusclesByDay[day.id] || [];
+    return mgs.reduce((s, mg) => s + (selectedExercisesByDay[`${day.id}_${mg}`]?.length || 0), 0) === 0;
+  });
+
   // Reconcilia a sequência plana com a seleção do passo 2: preserva a ordem
   // e as cargas já definidas, adiciona exercícios novos ao final e remove os
   // que foram desmarcados. Executado ao avançar para o passo de ordenação.
@@ -179,6 +186,10 @@ export default function Dashboard() {
   }
 
   async function save() {
+    if (emptyDays.length > 0) {
+      toast(`Sem exercícios em: ${emptyDays.map(d => d.name).join(', ')}. Todo dia precisa de ao menos um.`, 'error');
+      return;
+    }
     setSaving(true);
     const days = config.days.map(day => ({
       dayId: day.id,
@@ -186,22 +197,21 @@ export default function Dashboard() {
       exercises: flatToBlocks(selectedSequenceByDay[day.id] || []),
     }));
 
-    const payload = { format, days, user: session.user };
+    const payload = { format, days };
 
-    if (workoutId) {
-      await fetch("/api/workouts", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: workoutId, ...payload }),
-      });
-      setToast({ message: "Treino atualizado com sucesso!", type: "success" });
-    } else {
-      await fetch("/api/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      setToast({ message: "Treino salvo com sucesso!", type: "success" });
+    try {
+      if (workoutId) {
+        await apiFetch("/api/workouts", { method: "PUT", json: { id: workoutId, ...payload } });
+        toast("Treino atualizado com sucesso!");
+      } else {
+        await apiFetch("/api/save", { json: payload });
+        toast("Treino salvo com sucesso!");
+      }
+    } catch (err) {
+      // Não navega em caso de erro: o usuário fica na tela com o treino intacto.
+      toast(err.message, "error");
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
@@ -227,7 +237,7 @@ export default function Dashboard() {
   function goNext() {
     if (step === 2) {
       if (totalExercises === 0) {
-        setToast({ message: "Selecione ao menos um exercício para continuar.", type: "error" });
+        toast("Selecione ao menos um exercício para continuar.", "error");
         return;
       }
       // Ao sair da seleção, monta/atualiza a sequência ordenável.
@@ -346,6 +356,19 @@ export default function Dashboard() {
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">
                 Revise a sequência antes de salvar
               </p>
+              {emptyDays.length > 0 && (
+                <div className="flex items-start gap-2.5 p-3 mb-4 bg-amber-950/25 border border-amber-800 rounded-xl">
+                  <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-xs text-amber-300">
+                    <strong className="font-semibold">
+                      {emptyDays.length === 1 ? 'Um dia está sem exercícios' : `${emptyDays.length} dias estão sem exercícios`}
+                    </strong>{' '}
+                    ({emptyDays.map(d => d.name).join(', ')}). Volte ao passo 2 e preencha antes de salvar.
+                  </p>
+                </div>
+              )}
               <WorkoutReview
                 format={format}
                 variant={variant}
@@ -379,7 +402,7 @@ export default function Dashboard() {
           ) : (
             <button
               onClick={save}
-              disabled={saving || totalExercises === 0}
+              disabled={saving || totalExercises === 0 || emptyDays.length > 0}
               className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50"
             >
               {saving ? "Salvando..." : workoutId ? "Atualizar treino" : "Salvar treino"}
@@ -403,7 +426,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {toast && <Toast message={toast.message} type={toast.type} onClose={closeToast} />}
     </div>
   );
 }

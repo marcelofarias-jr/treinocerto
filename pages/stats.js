@@ -3,39 +3,20 @@ import { useRouter } from 'next/router'
 import { useEffect, useState, useMemo } from 'react'
 import { muscleGroupLabels } from '../lib/workoutConfig'
 import { todayFortaleza, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addMonths } from '../lib/dates'
-
-function fmtDuration(s) {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}min`
-}
+import { formatDuration } from '../lib/format'
+import { apiFetch } from '../lib/api'
+import { useToast } from '../components/ToastProvider'
+import { calcStreak, calcBestStreak } from '../lib/workoutStats'
 
 function fmtWeight(kg) {
   if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`
   return `${Math.round(kg)}kg`
 }
 
-function calcStreak(sessions) {
-  const dateSet = new Set(sessions.map(s => s.date))
-  const today = todayFortaleza()
-  const yesterdayStr = addDays(today, -1)
-
-  const start = dateSet.has(today) ? today : dateSet.has(yesterdayStr) ? yesterdayStr : null
-  if (!start) return 0
-
-  let streak = 0
-  let cur = start
-  while (dateSet.has(cur)) {
-    streak++
-    cur = addDays(cur, -1)
-  }
-  return streak
-}
-
 export default function Stats() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const toast = useToast()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('week')
@@ -48,14 +29,14 @@ export default function Stats() {
 
   useEffect(() => {
     if (!session) return
-    fetch(`/api/sessions?email=${session.user.email}`)
+    fetch('/api/sessions')
       .then(r => r.json())
       .then(data => { setSessions(Array.isArray(data) ? data : []); setLoading(false) })
   }, [session])
 
   useEffect(() => {
     if (!session) return
-    fetch(`/api/body-weight?email=${session.user.email}`)
+    fetch('/api/body-weight')
       .then(r => r.json())
       .then(data => setBodyWeights(Array.isArray(data) ? data : []))
   }, [session])
@@ -99,13 +80,11 @@ export default function Stats() {
   const doneSets = allExerciseSets.filter(s => s.done)
 
   const totalSessions  = sessions.length
-  const totalDuration  = sessions.reduce((a, s) => a + (s.duration || 0), 0)
   const totalWeight    = doneSets.reduce((a, s) => a + (parseFloat(s.carga) || 0) * (parseInt(s.repeticoes) || 0), 0)
   const totalReps      = doneSets.reduce((a, s) => a + (parseInt(s.repeticoes) || 0), 0)
   const totalSetsCount = doneSets.length
   const streak         = calcStreak(sessions)
-  const avgDuration    = totalSessions > 0 ? Math.round(totalDuration / totalSessions) : 0
-  const longestSession = sessions.reduce((max, s) => Math.max(max, s.duration || 0), 0)
+  const bestStreak     = calcBestStreak(sessions)
 
   // ── Período filtrado ──
   // Semana: segunda → domingo. Mês: dia 1 → último dia. A âncora (periodAnchor)
@@ -153,6 +132,11 @@ export default function Stats() {
     .map(([name, data]) => ({ name, ...data }))
     .sort((a, b) => b.weight - a.weight)
 
+  // Recordes batidos na última janela de 30 dias (a data do PR é a do dia em
+  // que a carga máxima foi alcançada pela primeira vez).
+  const pr30Start = addDays(todayStr, -29)
+  const prs30 = prList.filter(p => p.date >= pr30Start).length
+
   // ── Volume semanal por músculo (semana atual: segunda → domingo) ──
   const weekStartStr = startOfWeek(todayStr)
   const weekEndStr   = endOfWeek(todayStr)
@@ -167,12 +151,16 @@ export default function Stats() {
   })
   const muscleWeekList = Object.entries(muscleWeekSets).sort((a, b) => b[1] - a[1])
 
-  // ── Grupos musculares ──
+  // ── Grupos musculares (todo o histórico) ──
+  // Conta séries concluídas, a mesma unidade do "Volume semanal". Antes contava
+  // entradas de exercício, o que inflava grupos com muitos exercícios curtos.
   const muscleCount = {}
   sessions.forEach(s => {
     ;(s.exercisesData || []).forEach(e => {
+      const done = (e.sets || []).filter(set => set.done).length
+      if (done === 0) return
       const mg = e.muscleGroup || 'outros'
-      muscleCount[mg] = (muscleCount[mg] || 0) + 1
+      muscleCount[mg] = (muscleCount[mg] || 0) + done
     })
   })
   const muscleList = Object.entries(muscleCount).sort((a, b) => b[1] - a[1])
@@ -196,25 +184,30 @@ export default function Stats() {
     if (!weightInput || !weightDate) return
     setSavingWeight(true)
     try {
-      const res = await fetch('/api/body-weight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: session.user.email, date: weightDate, weight: parseFloat(weightInput) }),
+      const entry = await apiFetch('/api/body-weight', {
+        json: { date: weightDate, weight: parseFloat(weightInput) },
       })
-      const entry = await res.json()
       setBodyWeights(prev => {
         const filtered = prev.filter(e => e.date !== entry.date)
         return [...filtered, entry].sort((a, b) => a.date.localeCompare(b.date))
       })
       setWeightInput('')
+      toast(`Peso de ${entry.weight}kg registrado`)
+    } catch (err) {
+      toast(err.message, 'error')
     } finally {
       setSavingWeight(false)
     }
   }
 
   async function deleteWeight(id) {
-    await fetch(`/api/body-weight?id=${id}&email=${session.user.email}`, { method: 'DELETE' })
-    setBodyWeights(prev => prev.filter(e => e.id !== id))
+    try {
+      await apiFetch(`/api/body-weight?id=${id}`, { method: 'DELETE' })
+      setBodyWeights(prev => prev.filter(e => e.id !== id))
+      toast('Registro removido')
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   return (
@@ -237,10 +230,14 @@ export default function Stats() {
             <div className="grid grid-cols-2 gap-3">
               <KpiCard label="Treinos" value={totalSessions} sub="sessões concluídas" accent />
               <KpiCard label="Sequência" value={streak === 0 ? '—' : `${streak} 🔥`} sub={streak > 0 ? 'dias seguidos' : 'sem sequência ativa'} />
-              <KpiCard label="Tempo total" value={fmtDuration(totalDuration)} sub={`Média: ${fmtDuration(avgDuration)}/treino`} />
               <KpiCard label="Peso levantado" value={fmtWeight(totalWeight)} sub={`${totalReps.toLocaleString('pt-BR')} reps`} />
-              <KpiCard label="Séries feitas" value={totalSetsCount.toLocaleString('pt-BR')} />
-              <KpiCard label="Treino mais longo" value={fmtDuration(longestSession)} />
+              <KpiCard label="Séries feitas" value={totalSetsCount.toLocaleString('pt-BR')} sub={`${(totalSetsCount / totalSessions).toFixed(1)} por treino`} />
+              <KpiCard label="Recordes" value={prs30} sub="PRs nos últimos 30 dias" />
+              <KpiCard
+                label="Melhor sequência"
+                value={bestStreak === 0 ? '—' : `${bestStreak} dias`}
+                sub={bestStreak > 0 && streak === bestStreak ? 'você está no recorde 🔥' : 'recorde de dias seguidos'}
+              />
             </div>
 
             {/* Período */}
@@ -296,7 +293,7 @@ export default function Stats() {
                 <PeriodCard label="Séries"      value={pSets.length} />
                 <PeriodCard label="Repetições"  value={pReps.toLocaleString('pt-BR')} />
                 <PeriodCard label="Peso"        value={fmtWeight(pWeight)} />
-                <PeriodCard label="Tempo"       value={fmtDuration(pDuration)} />
+                <PeriodCard label="Tempo"       value={formatDuration(pDuration, 'short')} />
               </div>
             </div>
 
@@ -359,13 +356,14 @@ export default function Stats() {
             {/* Grupos musculares */}
             {muscleList.length > 0 && (
               <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-5">
-                <h2 className="font-heading font-black text-lg uppercase text-white mb-4">Grupos mais treinados</h2>
+                <h2 className="font-heading font-black text-lg uppercase text-white mb-1">Grupos mais treinados</h2>
+                <p className="text-xs text-zinc-400 mb-4">Séries concluídas em todo o histórico</p>
                 <div className="space-y-3">
                   {muscleList.slice(0, 8).map(([mg, count]) => (
                     <div key={mg}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-sm text-zinc-200">{muscleGroupLabels[mg] || mg}</span>
-                        <span className="text-xs text-zinc-400">{count}×</span>
+                        <span className="text-xs text-zinc-400">{count} séries</span>
                       </div>
                       <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                         <div className="h-1.5 bg-red-600 rounded-full transition-all duration-700"
@@ -428,7 +426,7 @@ export default function Stats() {
                     if (diff === 0) return null
                     return (
                       <p className="text-xs mt-3 mb-3 pt-3 border-t border-zinc-800 text-zinc-400">
-                        <span className={diff < 0 ? 'text-green-500' : 'text-red-400'}>
+                        <span className="text-zinc-100 font-semibold">
                           {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}kg
                         </span>
                         {' '}em {days} dias
@@ -447,7 +445,7 @@ export default function Stats() {
                           </span>
                           <div className="flex items-center gap-3">
                             {diff !== null && diff !== 0 && (
-                              <span className={`text-[10px] font-bold ${diff < 0 ? 'text-green-500' : 'text-red-400'}`}>
+                              <span className="text-[10px] font-bold text-zinc-500">
                                 {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}kg
                               </span>
                             )}

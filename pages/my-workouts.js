@@ -3,10 +3,15 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatConfigs, muscleGroupLabels } from "../lib/workoutConfig";
+import { humanSince } from "../lib/dates";
+import { apiFetch } from "../lib/api";
+import { useToast } from "../components/ToastProvider";
+import { countExercises, countSeries, countSeriesInDay } from "../lib/workoutStats";
 
 export default function MyWorkouts() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const toast = useToast();
   const [workouts, setWorkouts] = useState([]);
   const [sessionCounts, setSessionCounts] = useState({});
   const [dayCounts, setDayCounts] = useState({});
@@ -21,8 +26,8 @@ export default function MyWorkouts() {
   useEffect(() => {
     if (!session) return;
     Promise.all([
-      fetch(`/api/workouts?email=${session.user.email}`).then((r) => r.json()),
-      fetch(`/api/sessions?email=${session.user.email}`).then((r) => r.json()),
+      fetch('/api/workouts').then((r) => r.json()),
+      fetch('/api/sessions').then((r) => r.json()),
     ])
       .then(([workoutsData, sessionsData]) => {
         setWorkouts(Array.isArray(workoutsData) ? workoutsData : []);
@@ -50,22 +55,36 @@ export default function MyWorkouts() {
   }
 
   async function deleteWorkout() {
-    await fetch("/api/workouts", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: confirmDeleteId }),
-    });
-    setWorkouts(workouts.filter((w) => w.id !== confirmDeleteId));
+    const id = confirmDeleteId;
     setConfirmDeleteId(null);
+    try {
+      await apiFetch("/api/workouts", { method: "DELETE", json: { id } });
+      setWorkouts((ws) => ws.filter((w) => w.id !== id));
+      toast("Treino deletado");
+    } catch (err) {
+      toast(err.message, "error");
+    }
   }
 
   async function setActive(id) {
-    setWorkouts((ws) => ws.map((w) => ({ ...w, isActive: w.id === id })));
-    await fetch("/api/workouts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, email: session.user.email }),
-    });
+    const anterior = workouts;
+    const now = new Date().toISOString();
+    // Otimista, mas com rollback: sem isso a UI mostrava o treino trocado
+    // mesmo quando o servidor recusava.
+    setWorkouts((ws) =>
+      ws.map((w) => ({
+        ...w,
+        isActive: w.id === id,
+        activatedAt: w.id === id ? now : null,
+      }))
+    );
+    try {
+      await apiFetch("/api/workouts", { method: "PATCH", json: { id } });
+      toast("Treino ativo atualizado");
+    } catch (err) {
+      setWorkouts(anterior);
+      toast(err.message, "error");
+    }
   }
 
   // Ativo efetivo: o marcado ou, na ausência, o mais recente (último criado).
@@ -112,6 +131,8 @@ export default function MyWorkouts() {
               const isOpen = !!expandedIds[workout.id]
               const doneCount = sessionCounts[workout.id] || 0
               const isActive = workout.id === activeId
+              // Sem activatedAt (ativo implícito ou anterior à migração): usa a criação.
+              const activeSince = isActive ? humanSince(workout.activatedAt || workout.createdAt) : null
               return (
                 <div key={workout.id} className={`bg-[#1a1a1a] border rounded-2xl overflow-hidden ${isActive ? 'border-red-600' : 'border-zinc-800'}`}>
                   {/* Header clicável */}
@@ -130,7 +151,7 @@ export default function MyWorkouts() {
                           </h2>
                           {isActive && (
                             <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded flex-shrink-0">
-                              Ativo
+                              {activeSince ? `Ativo há ${activeSince}` : 'Ativo'}
                             </span>
                           )}
                         </div>
@@ -138,11 +159,7 @@ export default function MyWorkouts() {
                           <p className="text-zinc-400 text-xs mt-0.5">
                             {workout.days.length} {workout.days.length === 1 ? 'dia' : 'dias'}
                             {' · '}
-                            {workout.days.reduce((t, day) =>
-                              t + day.exercises.reduce((dt, mg) =>
-                                dt + mg.exercises.reduce((mt, ex) =>
-                                  mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0), 0)
-                            } séries
+                            {countSeries(workout.days)} séries
                           </p>
                         )}
                       </div>
@@ -175,10 +192,21 @@ export default function MyWorkouts() {
                     <div className="border-t border-zinc-800 px-5 pb-5 pt-4">
                       {/* Ações */}
                       <div className="flex flex-wrap gap-2 mb-4">
+                        <button
+                          onClick={() => router.push(`/treino?workout=${workout.id}`)}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wide rounded-lg transition-colors flex items-center gap-1.5"
+                          title={isActive ? 'Treinar este plano' : 'Fazer este treino num dia só, sem torná-lo o ativo'}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {isActive ? 'Treinar' : 'Treinar só hoje'}
+                        </button>
                         {isActive ? (
                           <span className="px-4 py-2 border border-red-900/60 bg-red-600/15 text-red-400 text-xs font-semibold uppercase tracking-wide rounded-lg flex items-center gap-1.5">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                            Treino ativo
+                            Treino ativo{activeSince ? ` há ${activeSince}` : ''}
                           </span>
                         ) : (
                           <button
@@ -206,10 +234,8 @@ export default function MyWorkouts() {
                       {workout.days ? (
                         <div className="space-y-3">
                           {workout.days.map(day => {
-                            const exCount = day.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
-                            const seriesCount = day.exercises.reduce((dt, mg) =>
-                              dt + mg.exercises.reduce((mt, ex) =>
-                                mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0)
+                            const exCount = countExercises(day)
+                            const seriesCount = countSeriesInDay(day)
                             const dayDone = dayCounts[`${workout.id}_${day.dayId}`] || 0
                             return (
                             <div key={day.dayId} className="bg-[#232323] rounded-xl p-4 border border-zinc-800">

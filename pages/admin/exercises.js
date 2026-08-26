@@ -2,13 +2,14 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { exercisesByMuscleGroup, muscleGroupLabels } from '../../lib/workoutConfig'
-
-const ADMIN_EMAIL = 'marcelobfariasjr@gmail.com'
+import { apiFetch } from '../../lib/api'
+import { useToast } from '../../components/ToastProvider'
 const MUSCLE_GROUPS = Object.keys(muscleGroupLabels)
 
 export default function AdminExercises() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const toast = useToast()
 
   const [customExercises, setCustomExercises] = useState([])  // [{ id, muscleGroup, name }]
   const [hiddenExercises, setHiddenExercises] = useState(new Set()) // Set de nomes ocultos
@@ -26,10 +27,10 @@ export default function AdminExercises() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session || session.user.email !== ADMIN_EMAIL) { router.push('/'); return }
+    if (!session?.user?.isAdmin) { router.push('/'); return }
 
     Promise.all([
-      fetch(`/api/exercises?email=${session.user.email}`).then(r => r.json()),
+      fetch('/api/exercises').then(r => r.json()),
       fetch('/api/hidden-exercises').then(r => r.json()),
     ]).then(([custom, hidden]) => {
       setCustomExercises(Array.isArray(custom) ? custom : [])
@@ -43,7 +44,7 @@ export default function AdminExercises() {
       <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
     </div>
   )
-  if (!session || session.user.email !== ADMIN_EMAIL) return null
+  if (!session?.user?.isAdmin) return null
 
   // ── Adicionar novo exercício customizado ──
   async function addExercise(e) {
@@ -58,15 +59,16 @@ export default function AdminExercises() {
     if (allNames.some(n => n.toLowerCase() === name.toLowerCase())) return
 
     setSaving(true)
-    const res = await fetch('/api/exercises', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userEmail: session.user.email, muscleGroup: newMuscle, name }),
-    })
-    const saved = await res.json()
-    setCustomExercises(prev => [...prev, saved])
-    setNewName('')
-    setSaving(false)
+    try {
+      const saved = await apiFetch('/api/exercises', { json: { muscleGroup: newMuscle, name } })
+      setCustomExercises(prev => [...prev, saved])
+      setNewName('')
+      toast(`"${saved.name}" adicionado`)
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Editar exercício padrão: oculta o original e cria um customizado ──
@@ -74,68 +76,68 @@ export default function AdminExercises() {
     const name = editName.trim()
     if (!name || name === originalName) { setEditingKey(null); return }
 
-    await Promise.all([
-      fetch('/api/hidden-exercises', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: originalName, muscleGroup }),
-      }),
-      fetch('/api/exercises', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: session.user.email, muscleGroup, name }),
-      }).then(r => r.json()).then(saved => {
-        setCustomExercises(prev => [...prev, saved])
-      }),
-    ])
-    setHiddenExercises(prev => new Set([...prev, originalName]))
     setEditingKey(null)
+    try {
+      // Sequencial de propósito: só oculta o original depois de conseguir criar
+      // o substituto. Em paralelo, uma falha no meio deixava o exercício
+      // oculto e sem substituto — sumido do catálogo.
+      const saved = await apiFetch('/api/exercises', { json: { muscleGroup, name } })
+      await apiFetch('/api/hidden-exercises', { json: { name: originalName, muscleGroup } })
+      setCustomExercises(prev => [...prev, saved])
+      setHiddenExercises(prev => new Set([...prev, originalName]))
+      toast(`"${originalName}" virou "${saved.name}"`)
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   // ── Editar exercício customizado ──
   async function saveEditCustom(id) {
     const name = editName.trim()
     if (!name) { setEditingKey(null); return }
-    const res = await fetch('/api/exercises', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, name }),
-    })
-    const saved = await res.json()
-    setCustomExercises(prev => prev.map(ex => ex.id === id ? { ...ex, name: saved.name } : ex))
     setEditingKey(null)
+    try {
+      const saved = await apiFetch('/api/exercises', { method: 'PATCH', json: { id, name } })
+      setCustomExercises(prev => prev.map(ex => ex.id === id ? { ...ex, name: saved.name } : ex))
+      toast('Exercício renomeado')
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   // ── Excluir exercício padrão: oculta ──
   async function deleteBuiltin(name, muscleGroup) {
-    await fetch('/api/hidden-exercises', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, muscleGroup }),
-    })
-    setHiddenExercises(prev => new Set([...prev, name]))
     setConfirmDelete(null)
+    try {
+      await apiFetch('/api/hidden-exercises', { json: { name, muscleGroup } })
+      setHiddenExercises(prev => new Set([...prev, name]))
+      toast(`"${name}" ocultado`)
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   // ── Excluir exercício customizado ──
   async function deleteCustom(id) {
-    await fetch('/api/exercises', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    })
-    setCustomExercises(prev => prev.filter(ex => ex.id !== id))
     setConfirmDelete(null)
+    try {
+      await apiFetch('/api/exercises', { method: 'DELETE', json: { id } })
+      setCustomExercises(prev => prev.filter(ex => ex.id !== id))
+      toast('Exercício excluído')
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   // ── Restaurar exercício padrão oculto ──
   async function restoreBuiltin(name) {
-    await fetch('/api/hidden-exercises', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    setHiddenExercises(prev => { const s = new Set(prev); s.delete(name); return s })
+    try {
+      await apiFetch('/api/hidden-exercises', { method: 'DELETE', json: { name } })
+      setHiddenExercises(prev => { const s = new Set(prev); s.delete(name); return s })
+      toast(`"${name}" restaurado`)
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   function handleConfirmedDelete() {

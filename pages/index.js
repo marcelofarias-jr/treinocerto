@@ -3,41 +3,78 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
-import { todayFortaleza, addDays } from '../lib/dates'
+import { todayFortaleza, humanSince } from '../lib/dates'
+import { formatDuration } from '../lib/format'
+import { apiFetch } from '../lib/api'
+import { useToast } from '../components/ToastProvider'
+import { calcStreak, recommendedDay, countSeries } from '../lib/workoutStats'
 
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-function calcStreak(sessions) {
-  const dateSet = new Set(sessions.map(s => s.date))
-  const today = todayFortaleza()
-  const yesterdayStr = addDays(today, -1)
-  const start = dateSet.has(today) ? today : dateSet.has(yesterdayStr) ? yesterdayStr : null
-  if (!start) return 0
-  let streak = 0
-  let cur = start
-  while (dateSet.has(cur)) {
-    streak++
-    cur = addDays(cur, -1)
-  }
-  return streak
-}
+function SessionModal({ session, onClose, onSaved, onDeleted }) {
+  const toast = useToast()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(null)      // cópia editável de exercisesData
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-function fmt(s) {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-}
-
-function SessionModal({ session, onClose }) {
   if (!session) return null
 
   const dateLabel = new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
-  // Agrupa exercícios por grupo muscular, só com séries concluídas
+  function startEditing() {
+    // Só as séries concluídas entram na edição: as pendentes nunca foram
+    // registradas, e mexer nelas mudaria o que o treino de fato foi.
+    setDraft((session.exercisesData || []).map(ex => ({
+      ...ex,
+      sets: (ex.sets || []).map(set => ({ ...set })),
+    })))
+    setNotes(session.notes || '')
+    setEditing(true)
+  }
+
+  function updateSet(ei, si, field, value) {
+    setDraft(prev => prev.map((ex, i) => i !== ei ? ex : {
+      ...ex,
+      sets: ex.sets.map((set, j) => j !== si ? set : { ...set, [field]: value }),
+    }))
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      const updated = await apiFetch('/api/sessions', {
+        method: 'PUT',
+        json: { id: session.id, exercisesData: draft, notes: notes.trim() || null },
+      })
+      onSaved(updated)
+      setEditing(false)
+      toast('Treino atualizado')
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove() {
+    setSaving(true)
+    try {
+      await apiFetch('/api/sessions', { method: 'DELETE', json: { id: session.id } })
+      onDeleted(session.id)
+      toast('Treino removido do histórico')
+      onClose()
+    } catch (err) {
+      toast(err.message, 'error')
+      setSaving(false)
+      setConfirmDelete(false)
+    }
+  }
+
+  // Leitura: agrupa por músculo, só séries concluídas com carga.
   const byGroup = {}
   ;(session.exercisesData || []).forEach(ex => {
     const doneSets = (ex.sets || []).filter(s => s.done && s.carga)
@@ -46,18 +83,17 @@ function SessionModal({ session, onClose }) {
     if (!byGroup[group]) byGroup[group] = []
     byGroup[group].push({ name: ex.name, sets: doneSets })
   })
-
   const hasData = Object.keys(byGroup).length > 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
-      <div className="absolute inset-0 bg-black/75" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/75" onClick={editing ? undefined : onClose} />
       <div className="relative bg-[#1a1a1a] border border-zinc-700 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
 
         {/* Header */}
         <div className="p-5 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] text-zinc-400 tracking-widest mb-1 capitalize">{dateLabel}</p>
               <h3 className="font-heading font-black text-2xl uppercase text-white leading-tight">
                 {session.dayLabel || 'Treino'}
@@ -67,56 +103,177 @@ function SessionModal({ session, onClose }) {
                   <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-xs text-zinc-300">{fmt(session.duration)}</span>
+                  <span className="text-xs text-zinc-300">{formatDuration(session.duration, 'short')}</span>
                 </div>
               )}
             </div>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            {!editing && (
+              <button onClick={onClose} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Body */}
+        {/* Corpo */}
         <div className="overflow-y-auto flex-1 p-5 space-y-5">
-          {session.notes && (
-            <div className="p-3 bg-zinc-800/50 rounded-xl border border-zinc-800">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Anotação</p>
-              <p className="text-sm text-zinc-200">{session.notes}</p>
-            </div>
-          )}
-          {!hasData ? (
-            <p className="text-zinc-300 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
-          ) : (
-            Object.entries(byGroup).map(([group, exercises]) => (
-              <div key={group}>
-                <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3">{group}</p>
-                <div className="space-y-4">
-                  {exercises.map((ex, ei) => (
-                    <div key={ei}>
-                      <p className="text-sm font-semibold text-white mb-2">{ex.name}</p>
-                      <div className="space-y-1">
-                        {ex.sets.map((set, si) => (
-                          <div key={si} className="flex items-center gap-3 text-xs text-zinc-300">
-                            <span className="w-6 font-heading font-bold text-zinc-500">{String(si + 1).padStart(2, '0')}</span>
-                            <span className="flex-1">
-                              {set.carga && <span className="text-white font-semibold">{set.carga} kg</span>}
-                              {set.carga && set.repeticoes && <span className="text-zinc-500 mx-1">×</span>}
-                              {set.repeticoes && <span>{set.repeticoes} reps</span>}
-                            </span>
-                            <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        ))}
-                      </div>
+          {editing ? (
+            <>
+              <p className="text-xs text-zinc-400">
+                Corrija carga e repetições das séries registradas. Isso recalcula volume, PRs e o
+                pré-preenchimento dos próximos treinos.
+              </p>
+              {draft.map((ex, ei) => {
+                const doneIdx = ex.sets.map((set, si) => ({ set, si })).filter(x => x.set.done)
+                if (doneIdx.length === 0) return null
+                return (
+                  <div key={ei}>
+                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                      {muscleGroupLabels[ex.muscleGroup] || ex.muscleGroup}
+                    </p>
+                    <p className="text-sm font-semibold text-white mb-2">{ex.name}</p>
+                    <div className="space-y-1.5">
+                      {doneIdx.map(({ set, si }) => (
+                        <div key={si} className="grid grid-cols-[28px_1fr_1fr] gap-2 items-center">
+                          <span className="font-heading font-bold text-zinc-500 text-xs">{String(si + 1).padStart(2, '0')}</span>
+                          <label className="flex items-center gap-1.5">
+                            <input
+                              type="number" inputMode="decimal" min="0" step="0.5"
+                              value={set.carga ?? ''}
+                              onChange={e => updateSet(ei, si, 'carga', e.target.value)}
+                              className="w-full"
+                            />
+                            <span className="text-[10px] text-zinc-500 flex-shrink-0">kg</span>
+                          </label>
+                          <label className="flex items-center gap-1.5">
+                            <input
+                              type="number" inputMode="numeric" min="0"
+                              value={set.repeticoes ?? ''}
+                              onChange={e => updateSet(ei, si, 'repeticoes', e.target.value)}
+                              className="w-full"
+                            />
+                            <span className="text-[10px] text-zinc-500 flex-shrink-0">reps</span>
+                          </label>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )
+              })}
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Anotação</p>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Como você se sentiu, observações..."
+                  className="w-full resize-none"
+                />
               </div>
-            ))
+            </>
+          ) : (
+            <>
+              {session.notes && (
+                <div className="p-3 bg-zinc-800/50 rounded-xl border border-zinc-800">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Anotação</p>
+                  <p className="text-sm text-zinc-200">{session.notes}</p>
+                </div>
+              )}
+              {!hasData ? (
+                <p className="text-zinc-300 text-sm text-center py-4">Nenhuma série registrada nesse treino.</p>
+              ) : (
+                Object.entries(byGroup).map(([group, exercises]) => (
+                  <div key={group}>
+                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3">{group}</p>
+                    <div className="space-y-4">
+                      {exercises.map((ex, ei) => (
+                        <div key={ei}>
+                          <p className="text-sm font-semibold text-white mb-2">{ex.name}</p>
+                          <div className="space-y-1">
+                            {ex.sets.map((set, si) => (
+                              <div key={si} className="flex items-center gap-3 text-xs text-zinc-300">
+                                <span className="w-6 font-heading font-bold text-zinc-500">{String(si + 1).padStart(2, '0')}</span>
+                                <span className="flex-1">
+                                  {set.carga && <span className="text-white font-semibold">{set.carga} kg</span>}
+                                  {set.carga && set.repeticoes && <span className="text-zinc-500 mx-1">×</span>}
+                                  {set.repeticoes && <span>{set.repeticoes} reps</span>}
+                                </span>
+                                <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Ações */}
+        <div className="p-5 border-t border-zinc-800 flex-shrink-0">
+          {editing ? (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="flex-1 py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors disabled:opacity-50"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={save}
+                disabled={saving}
+                className="flex-1 py-3 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          ) : confirmDelete ? (
+            <div>
+              <p className="text-xs text-zinc-300 mb-3">
+                Remover este treino do histórico? Ele sai do calendário, do total de treinos e das
+                estatísticas.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={saving}
+                  className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={remove}
+                  disabled={saving}
+                  className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Removendo...' : 'Remover'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="px-4 py-2.5 border border-red-900 hover:border-red-600 text-red-500 hover:text-red-400 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
+              >
+                Excluir
+              </button>
+              <button
+                onClick={startEditing}
+                disabled={!(session.exercisesData || []).some(ex => (ex.sets || []).some(s => s.done))}
+                className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Corrigir cargas
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -125,9 +282,11 @@ function SessionModal({ session, onClose }) {
 }
 
 function Calendar({ sessions, onDayClick }) {
+  // Mês inicial no fuso de Fortaleza, igual ao resto do app. Com o fuso do
+  // aparelho, perto da virada do mês o calendário abria no mês errado.
   const [cursor, setCursor] = useState(() => {
-    const now = new Date()
-    return { year: now.getFullYear(), month: now.getMonth() }
+    const [year, month] = todayFortaleza().split('-').map(Number)
+    return { year, month: month - 1 }
   })
 
   const { year, month } = cursor
@@ -215,10 +374,12 @@ function Calendar({ sessions, onDayClick }) {
 export default function Home() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const toast = useToast()
   const [workout, setWorkout] = useState(null)
   const [allSessions, setAllSessions] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [activeWorkout, setActiveWorkout] = useState(false)
+  const [standaloneRunning, setStandaloneRunning] = useState(false)
   const [selectedSession, setSelectedSession] = useState(null)
   const [lastWeight, setLastWeight] = useState(undefined)
   const [weightInputHome, setWeightInputHome] = useState('')
@@ -231,13 +392,20 @@ export default function Home() {
   useEffect(() => {
     if (!session) return
     Promise.all([
-      fetch(`/api/workouts?email=${session.user.email}`).then(r => r.json()),
-      fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json()),
+      fetch('/api/workouts').then(r => r.json()),
+      fetch('/api/sessions').then(r => r.json()),
     ]).then(([workouts, sessions]) => {
       const ws = Array.isArray(workouts) ? workouts : []
       const ss = Array.isArray(sessions) ? sessions : []
       // Treino ativo marcado; senão, o mais recente (cobre "só há um treino").
-      if (ws.length > 0) setWorkout(ws.find(w => w.isActive) || ws[ws.length - 1])
+      if (ws.length > 0) {
+        const active = ws.find(w => w.isActive) || ws[ws.length - 1]
+        // Sessão de outro plano em andamento: mostra o plano dela, não o ativo.
+        const planId = localStorage.getItem('workoutStartTime') ? localStorage.getItem('workoutPlanId') : null
+        const running = planId ? ws.find(w => String(w.id) === planId) : null
+        setWorkout(running || active)
+        setStandaloneRunning(!!running && running.id !== active.id)
+      }
       setAllSessions(ss)
       setLoadingData(false)
     })
@@ -245,9 +413,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!session) return
-    fetch(`/api/body-weight?email=${session.user.email}&last=1`)
-      .then(r => r.json())
-      .then(data => setLastWeight(data || null))
+    fetch('/api/body-weight?last=1')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setLastWeight(data?.date ? data : null))
       .catch(() => setLastWeight(null))
   }, [session])
 
@@ -287,16 +455,6 @@ export default function Home() {
   const streak = calcStreak(allSessions)
   const totalSessions = allSessions.length
 
-  function getRecommendedDay(workout, sessions) {
-  if (!workout?.days?.length) return null
-  const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id)
-  const lastWithDay = sorted.find(s => s.dayId)
-  if (!lastWithDay) return workout.days[0]
-  const lastIdx = workout.days.findIndex(d => d.dayId === lastWithDay.dayId)
-  if (lastIdx === -1) return workout.days[0]
-  return workout.days[(lastIdx + 1) % workout.days.length]
-}
-
 function getRestAdvice(streak) {
     if (streak >= 6) return {
       level: 'critical',
@@ -329,7 +487,16 @@ function getRestAdvice(streak) {
   }
 
   const restAdvice = getRestAdvice(streak)
-  const recommendedDay = !loadingData && workout ? getRecommendedDay(workout, allSessions) : null
+  const nextDay = !loadingData && workout ? recommendedDay(workout, allSessions) : null
+
+  // Há quanto tempo o plano exibido é o ativo (cai para a criação quando o
+  // treino nunca foi marcado explicitamente) e quantas sessões desde então.
+  const activeSinceIso = workout ? (workout.activatedAt || workout.createdAt) : null
+  const activeSince = standaloneRunning ? null : humanSince(activeSinceIso)
+  const activeSinceDate = activeSinceIso ? todayFortaleza(new Date(activeSinceIso)) : null
+  const activeSessions = activeSinceDate
+    ? allSessions.filter(s => s.date >= activeSinceDate).length
+    : 0
 
   const today = todayFortaleza()
   const daysSinceLast = lastWeight
@@ -341,14 +508,14 @@ function getRestAdvice(streak) {
     if (!weightInputHome) return
     setSavingWeightHome(true)
     try {
-      const res = await fetch('/api/body-weight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail: session.user.email, date: today, weight: parseFloat(weightInputHome) }),
+      const entry = await apiFetch('/api/body-weight', {
+        json: { date: today, weight: parseFloat(weightInputHome) },
       })
-      const entry = await res.json()
       setLastWeight(entry)
       setWeightInputHome('')
+      toast(`Peso de ${entry.weight}kg registrado`)
+    } catch (err) {
+      toast(err.message, 'error')
     } finally {
       setSavingWeightHome(false)
     }
@@ -357,7 +524,15 @@ function getRestAdvice(streak) {
   return (
     <div className="min-h-screen bg-[#0f0f0f]">
       {selectedSession && (
-        <SessionModal session={selectedSession} onClose={() => setSelectedSession(null)} />
+        <SessionModal
+          session={selectedSession}
+          onClose={() => setSelectedSession(null)}
+          onSaved={updated => {
+            setAllSessions(prev => prev.map(x => (x.id === updated.id ? updated : x)))
+            setSelectedSession(updated)
+          }}
+          onDeleted={id => setAllSessions(prev => prev.filter(x => x.id !== id))}
+        />
       )}
 
 
@@ -452,7 +627,9 @@ function getRestAdvice(streak) {
             <div className="flex justify-between items-start mb-5">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="text-xs text-zinc-400 uppercase tracking-widest">Treino atual</p>
+                  <p className="text-xs text-zinc-400 uppercase tracking-widest">
+                    {standaloneRunning ? 'Treinando só hoje' : 'Treino atual'}
+                  </p>
                   {activeWorkout && (
                     <span className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/20 border border-amber-600 rounded-full">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -461,14 +638,17 @@ function getRestAdvice(streak) {
                   )}
                 </div>
                 <h2 className="font-heading font-black text-2xl uppercase text-white">{formatConfig?.name}</h2>
+                {!standaloneRunning && activeSince && (
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Ativo há <span className="text-zinc-200 font-semibold">{activeSince}</span>
+                    {' · '}
+                    {activeSessions} {activeSessions === 1 ? 'sessão' : 'sessões'} nesse período
+                  </p>
+                )}
                 <p className="text-zinc-300 text-xs mt-1">
                   {workout.days?.length} {workout.days?.length === 1 ? 'dia' : 'dias'} de treino
                   {' · '}
-                  {workout.days?.reduce((t, day) =>
-                    t + day.exercises.reduce((dt, mg) =>
-                      dt + mg.exercises.reduce((mt, ex) =>
-                        mt + (typeof ex === 'object' && ex.series ? parseInt(ex.series) : 3), 0), 0), 0)
-                  } séries
+                  {countSeries(workout.days)} séries
                 </p>
               </div>
               <Link href="/my-workouts" className="text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors">
@@ -476,14 +656,14 @@ function getRestAdvice(streak) {
               </Link>
             </div>
 
-            {recommendedDay && !activeWorkout && (
+            {nextDay && !activeWorkout && (
               <div className="flex items-center gap-3 mb-4 p-3 bg-[#232323] border border-zinc-800 rounded-xl">
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-0.5">Recomendado hoje</p>
-                  <p className="font-heading font-bold text-white text-sm uppercase truncate">{recommendedDay.label}</p>
+                  <p className="font-heading font-bold text-white text-sm uppercase truncate">{nextDay.label}</p>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-1 bg-red-600/20 border border-red-700/50 text-red-400 rounded-full uppercase tracking-widest flex-shrink-0">
-                  Dia {recommendedDay.dayId}
+                  Dia {nextDay.dayId}
                 </span>
               </div>
             )}
