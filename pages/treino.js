@@ -1,31 +1,18 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
-import { muscleGroupLabels } from '../lib/workoutConfig'
+import { formatConfigs, muscleGroupLabels } from '../lib/workoutConfig'
 import { todayFortaleza } from '../lib/dates'
-
-function fmt(s) {
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
-
-function playBeep() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.value = 880
-    osc.type = 'sine'
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.6)
-  } catch (_) {}
-}
+import { formatDuration } from '../lib/format'
+import { primeAudio } from '../lib/beep'
+import { apiFetch } from '../lib/api'
+import { useToast } from '../components/ToastProvider'
+import { recommendedDay, countExercises, countSeries } from '../lib/workoutStats'
 
 function buildHistory(sessions) {
-  const sorted = [...sessions]
+  // Guarda contra resposta que não é lista (ex.: {error} de um 401): sem isso
+  // o spread abaixo lança "object is not iterable" e derruba a tela.
+  const sorted = [...(Array.isArray(sessions) ? sessions : [])]
     .filter(s => s.exercisesData?.length > 0)
     .sort((a, b) => new Date(b.date) - new Date(a.date))
 
@@ -64,7 +51,7 @@ function WorkoutTimer({ seconds }) {
       <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <span className="font-heading font-bold text-white text-sm tracking-widest">{fmt(seconds)}</span>
+      <span className="font-heading font-bold text-white text-sm tracking-widest">{formatDuration(seconds)}</span>
     </div>
   )
 }
@@ -73,21 +60,13 @@ function RestTimerWidget({ endTime, totalSeconds, onDone }) {
   const [remaining, setRemaining] = useState(() =>
     Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
   )
-  const alerted = useRef(false)
   const doneFired = useRef(false)
 
-  function triggerAlert() {
-    if (alerted.current) return
-    alerted.current = true
-    playBeep()
-    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500])
-  }
-
+  // Sem alarme aqui: quem beepa e vibra é o Header, que está montado em todas
+  // as páginas. Dois donos = dois beeps sobrepostos.
   useEffect(() => {
     function update() {
-      const rem = Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
-      setRemaining(rem)
-      if (rem <= 0) triggerAlert()
+      setRemaining(Math.max(0, Math.ceil((endTime - Date.now()) / 1000)))
     }
 
     function onVisible() {
@@ -133,7 +112,7 @@ function RestTimerWidget({ endTime, totalSeconds, onDone }) {
           </button>
         </div>
         <p className={`font-heading font-black text-2xl leading-none tracking-widest text-center ${urgent ? 'text-red-500' : 'text-white'}`}>
-          {fmt(remaining)}
+          {formatDuration(remaining)}
         </p>
         <div className="h-0.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
           <div className="h-0.5 bg-red-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -143,8 +122,27 @@ function RestTimerWidget({ endTime, totalSeconds, onDone }) {
   )
 }
 
+// Acima disso a sessão em andamento é tratada como abandonada.
+const MAX_SESSION_MS = 12 * 60 * 60 * 1000
+
+// Séries iniciais de um exercício: repete o que foi feito da última vez.
+function buildInitialSets(exs, history, keepDone = false) {
+  const init = {}
+  exs.forEach((ex, i) => {
+    const n = Math.max(1, parseInt(ex.series) || 3)
+    const prev = history[ex.name]?.lastSets || []
+    init[i] = Array.from({ length: n }, (_, si) => ({
+      carga: prev[si]?.carga || ex.carga || '',
+      repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
+      done: keepDone ? (prev[si]?.done || false) : false,
+    }))
+  })
+  return init
+}
+
 function clearWorkoutStorage() {
   localStorage.removeItem('workoutStartTime')
+  localStorage.removeItem('workoutPlanId')
   localStorage.removeItem('workoutDayId')
   localStorage.removeItem('workoutCurrentIdx')
   localStorage.removeItem('workoutSetsData')
@@ -153,8 +151,10 @@ function clearWorkoutStorage() {
 export default function Treino() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const toast = useToast()
 
   const [workout, setWorkout] = useState(null)
+  const [allWorkouts, setAllWorkouts] = useState([])
   const [allSessions, setAllSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedDayId, setSelectedDayId] = useState(null)
@@ -171,32 +171,55 @@ export default function Treino() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [previewDay, setPreviewDay] = useState(null)
   const [viewOnly, setViewOnly] = useState(false)
+  const [standalone, setStandalone] = useState(false)
+  const [inProgress, setInProgress] = useState(null) // { dayId, label } da sessão viva
   const [sessionNotes, setSessionNotes] = useState('')
   const listRef = useRef(null)
   const setsDataInitialized = useRef(false)
+  const completePrompted = useRef(false)
 
   // Carrega o treino do usuário e restaura sessão ativa se houver
   useEffect(() => {
-    if (!session) return
+    if (!session || !router.isReady) return
+    // ?workout=<id> treina um plano salvo qualquer, sem mudar qual é o ativo.
+    const requestedId = router.query.workout != null ? String(router.query.workout) : null
     Promise.all([
-      fetch(`/api/workouts?email=${session.user.email}`).then(r => r.json()),
-      fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json()),
-    ]).then(([ws, ss]) => {
+      apiFetch('/api/workouts'),
+      apiFetch('/api/sessions'),
+    ]).catch(err => {
+      // Sem isso, uma sessão expirada virava a tela "Nenhum treino encontrado".
+      toast(err.message, 'error')
+      setLoading(false)
+      return [[], []]
+    }).then(([ws, ss]) => {
+      const list = Array.isArray(ws) ? ws : []
       // Treino ativo marcado; senão, o mais recente (cobre "só há um treino").
-      const w = ws.length > 0 ? (ws.find(x => x.isActive) || ws[ws.length - 1]) : null
+      const activeW = list.length > 0 ? (list.find(x => x.isActive) || list[list.length - 1]) : null
+      // Sessão em andamento manda: continua no plano dela, ignorando a URL.
+      const pickId = localStorage.getItem('workoutStartTime')
+        ? localStorage.getItem('workoutPlanId')
+        : requestedId
+      const w = (pickId && list.find(x => String(x.id) === pickId)) || activeW
+      setStandalone(!!w && !!activeW && w.id !== activeW.id)
       const sessions = Array.isArray(ss) ? ss : []
+      setAllWorkouts(list)
       setWorkout(w)
       setAllSessions(sessions)
       setLoading(false)
 
-      if (!w) return
       const startTime = localStorage.getItem('workoutStartTime')
       const savedDayId = localStorage.getItem('workoutDayId')
       if (!startTime || !savedDayId) return
 
-      // Verifica se o dayId ainda existe no treino atual
-      if (!w.days.some(d => d.dayId === savedDayId)) { clearWorkoutStorage(); return }
+      // Treino nenhum dura 12h: passou disso, foi abandonado. Sem esse corte o
+      // cronômetro segue contando por dias e a duração salva vira lixo.
+      if (Date.now() - parseInt(startTime) > MAX_SESSION_MS) { clearWorkoutStorage(); return }
 
+      // Verifica se o dayId ainda existe no treino restaurado
+      const savedDay = w?.days?.find(d => d.dayId === savedDayId)
+      if (!savedDay) { clearWorkoutStorage(); return }
+
+      setInProgress({ dayId: savedDayId, label: savedDay.label })
       setSelectedDayId(savedDayId)
       setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
 
@@ -215,26 +238,16 @@ export default function Treino() {
         setSetsData(restoredSets)
       } else {
         // setsData não estava salvo — inicializa a partir do treino + histórico
-        const d = w.days.find(d => d.dayId === savedDayId)
-        const exs = d.exercises.flatMap(mg =>
+        const exs = savedDay.exercises.flatMap(mg =>
           mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
         )
-        const init = {}
-        exs.forEach((ex, i) => {
-          const n = Math.max(1, parseInt(ex.series) || 3)
-          const prev = history[ex.name]?.lastSets || []
-          init[i] = Array.from({ length: n }, (_, si) => ({
-            carga: prev[si]?.carga || ex.carga || '',
-            repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
-            done: false,
-          }))
-        })
+        const init = buildInitialSets(exs, history)
         setSetsData(init)
         localStorage.setItem('workoutSetsData', JSON.stringify(init))
       }
       setsDataInitialized.current = true
     })
-  }, [session])
+  }, [session, router.isReady, router.query.workout])
 
   // Restaura timer de descanso ativo ao retornar à página
   useEffect(() => {
@@ -268,45 +281,51 @@ export default function Treino() {
 
   // Persiste setsData e currentIdx em tempo real
   useEffect(() => {
-    if (!setsDataInitialized.current) return
+    if (!setsDataInitialized.current || viewOnly) return
     if (!localStorage.getItem('workoutStartTime')) return
     localStorage.setItem('workoutSetsData', JSON.stringify(setsData))
   }, [setsData])
 
   useEffect(() => {
+    if (viewOnly) return
     if (!localStorage.getItem('workoutStartTime')) return
     localStorage.setItem('workoutCurrentIdx', String(currentIdx))
   }, [currentIdx])
+
+  /*
+   * Última série marcada: propõe encerrar sozinho.
+   *
+   * Dispara uma vez por conclusão. Se o usuário escolher "Continuar" não
+   * insiste; se desmarcar uma série e completar de novo, propõe outra vez.
+   */
+  useEffect(() => {
+    if (viewOnly || summary || !selectedDayId) return
+    const sets = Object.values(setsData)
+    const planned = sets.reduce((a, x) => a + x.length, 0)
+    const done = sets.reduce((a, x) => a + x.filter(k => k.done).length, 0)
+
+    if (planned === 0 || done < planned) { completePrompted.current = false; return }
+    if (completePrompted.current) return
+    completePrompted.current = true
+
+    // Pequena folga para o check da última série registrar na tela antes do modal.
+    const t = setTimeout(() => setShowFinishModal(true), 700)
+    return () => clearTimeout(t)
+  }, [setsData, viewOnly, summary, selectedDayId])
 
   if (status === 'loading' || loading) {
     return <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center text-zinc-500">Carregando...</div>
   }
   if (!session) { router.push('/'); return null }
-  if (!workout) {
-    return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center px-4">
-        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl p-8 text-center max-w-sm">
-          <p className="text-zinc-300 mb-5">Nenhum treino encontrado.</p>
-          <button onClick={() => router.push('/dashboard')} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest rounded-xl transition-colors">
-            Criar treino
-          </button>
-        </div>
-      </div>
-    )
-  }
 
-  function getRecommendedDayId(workout, sessions) {
-    if (!workout?.days?.length) return null
-    const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id)
-    const lastWithDay = sorted.find(s => s.dayId)
-    if (!lastWithDay) return workout.days[0]?.dayId
-    const lastIdx = workout.days.findIndex(d => d.dayId === lastWithDay.dayId)
-    if (lastIdx === -1) return workout.days[0]?.dayId
-    return workout.days[(lastIdx + 1) % workout.days.length].dayId
-  }
-
-  const recommendedDayId = getRecommendedDayId(workout, allSessions)
-  const day = selectedDayId != null ? workout.days.find(d => d.dayId === selectedDayId) : null
+  const recommendedDayId = recommendedDay(workout, allSessions)?.dayId ?? null
+  const openDay = selectedDayId != null ? workout?.days?.find(d => d.dayId === selectedDayId) : null
+  // Dia sem exercício não abre: flatEx vazio deixava `ex` undefined e quebrava
+  // a tela. Sem dia válido, a rota cai na seleção.
+  const day = openDay?.exercises?.some(mg => mg.exercises?.length) ? openDay : null
+  // Ativo efetivo: o marcado ou, na ausência, o mais recente (mesma regra da API).
+  const activeWorkoutId = allWorkouts.find(w => w.isActive)?.id ?? allWorkouts[allWorkouts.length - 1]?.id
+  const otherWorkouts = allWorkouts.filter(w => w.id !== workout?.id)
   const flatEx = day
     ? day.exercises.flatMap(mg =>
         mg.exercises.map(ex => ({ ...(typeof ex === 'string' ? { name: ex } : ex), muscleGroup: mg.muscleGroup }))
@@ -319,31 +338,42 @@ export default function Treino() {
       mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
     )
 
-    // Carrega histórico de sessões
-    const allSessions = await fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json())
-    const history = buildHistory(allSessions)
+    // Carrega histórico de sessões. Se falhar, o treino começa sem
+    // pré-preenchimento em vez de travar quem já está na academia.
+    let history = {}
+    try {
+      history = buildHistory(await apiFetch('/api/sessions'))
+    } catch (err) {
+      toast(`${err.message} O treino começa sem as cargas da última vez.`, 'error')
+    }
     setExerciseHistory(history)
 
     // Inicializa sets pré-preenchidos com dados do último treino
-    const init = {}
-    exs.forEach((ex, i) => {
-      const n = Math.max(1, parseInt(ex.series) || 3)
-      const prev = history[ex.name]?.lastSets || []
-      init[i] = Array.from({ length: n }, (_, si) => ({
-        carga: prev[si]?.carga || ex.carga || '',
-        repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
-        done: false,
-      }))
-    })
+    const init = buildInitialSets(exs, history)
 
     setsDataInitialized.current = true
     setSetsData(init)
+    setInProgress({ dayId, label: d.label })
     setSelectedDayId(dayId)
     setCurrentIdx(0)
     localStorage.setItem('workoutStartTime', String(Date.now()))
+    localStorage.setItem('workoutPlanId', String(workout.id))
     localStorage.setItem('workoutDayId', dayId)
     localStorage.setItem('workoutCurrentIdx', '0')
     localStorage.setItem('workoutSetsData', JSON.stringify(init))
+  }
+
+  // Volta para a sessão em andamento relendo o estado persistido — assim um
+  // desvio pelo "só visualizar" não contamina os dados do treino em curso.
+  function resumeInProgress() {
+    if (!inProgress) return
+    try {
+      const saved = JSON.parse(localStorage.getItem('workoutSetsData') || 'null')
+      if (saved) setSetsData(saved)
+    } catch (_) {}
+    setViewOnly(false)
+    setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
+    setSelectedDayId(inProgress.dayId)
   }
 
   async function viewDay(dayId) {
@@ -351,22 +381,15 @@ export default function Treino() {
     const exs = d.exercises.flatMap(mg =>
       mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
     )
-    const allSessions = await fetch(`/api/sessions?email=${session.user.email}`).then(r => r.json())
-    const history = buildHistory(allSessions)
+    let history = {}
+    try {
+      history = buildHistory(await apiFetch('/api/sessions'))
+    } catch (err) {
+      toast(err.message, 'error')
+    }
     setExerciseHistory(history)
 
-    const init = {}
-    exs.forEach((ex, i) => {
-      const n = Math.max(1, parseInt(ex.series) || 3)
-      const prev = history[ex.name]?.lastSets || []
-      init[i] = Array.from({ length: n }, (_, si) => ({
-        carga: prev[si]?.carga || ex.carga || '',
-        repeticoes: prev[si]?.repeticoes || ex.repeticoes || '',
-        done: prev[si]?.done || false,
-      }))
-    })
-
-    setSetsData(init)
+    setSetsData(buildInitialSets(exs, history, true))
     setSelectedDayId(dayId)
     setCurrentIdx(0)
     setViewOnly(true)
@@ -380,13 +403,41 @@ export default function Treino() {
     })
   }
 
-  function markDone(ei, si) {
+  function clearRestTimer() {
+    setRestEndTime(null)
+    setRestingSet(null)
+    localStorage.removeItem('restTimerEnd')
+    localStorage.removeItem('restTimerTotal')
+    localStorage.removeItem('restTimerSet')
+  }
+
+  // Alterna a série: marcar inicia o descanso, desmarcar reabre os campos e
+  // cancela o descanso daquela série (toque errado tem volta).
+  function toggleDone(ei, si) {
+    const wasDone = !!setsData[ei]?.[si]?.done
+
     setSetsData(prev => {
       const sets = [...(prev[ei] || [])]
-      if (sets[si].done) return prev
-      sets[si] = { ...sets[si], done: true }
+      if (!sets[si]) return prev
+      sets[si] = { ...sets[si], done: !wasDone }
       return { ...prev, [ei]: sets }
     })
+
+    if (wasDone) {
+      if (restingSet?.ei === ei && restingSet?.si === si) clearRestTimer()
+      return
+    }
+
+    // Toque do usuário: bom momento para acordar o áudio antes do alarme.
+    primeAudio()
+
+    // Se esta série fecha o treino, não inicia descanso: o encerramento é
+    // proposto em seguida e um cronômetro rodando atrás do modal só atrapalha.
+    const fechaOTreino = Object.entries(setsData).every(([k, arr]) =>
+      arr.every((st, i) => st.done || (String(k) === String(ei) && i === si))
+    )
+    if (fechaOTreino) return
+
     const ds = parseInt(flatEx[ei]?.descanso) || 60
     if (ds > 0) {
       const end = Date.now() + ds * 1000
@@ -415,6 +466,7 @@ export default function Treino() {
   function cancelWorkout() {
     setsDataInitialized.current = false
     clearWorkoutStorage()
+    setInProgress(null)
     setSelectedDayId(null)
     setSetsData({})
     setCurrentIdx(0)
@@ -423,6 +475,9 @@ export default function Treino() {
   }
 
   async function finish() {
+    // Guard de último nível: nada de sessão vazia no histórico, mesmo que a UI
+    // deixe passar por algum caminho novo.
+    if (getStats().doneSets === 0) { setShowFinishModal(false); return }
     setFinishing(true)
     const start = localStorage.getItem('workoutStartTime')
     const finalElapsed = start ? Math.floor((Date.now() - parseInt(start)) / 1000) : elapsed
@@ -460,25 +515,40 @@ export default function Treino() {
       return { name: ex.name, muscleGroup: ex.muscleGroup, curMaxW, prevMaxW, curReps, prevReps, isNewPR, weightDiff, repsDiff, hasPrev, setsCompleted: curSets.length }
     }).filter(e => e.setsCompleted > 0)
 
+    // Grava PRIMEIRO, limpa depois. Na ordem inversa, uma falha de rede — que
+    // na academia é comum — apagava o treino do localStorage sem ter salvado.
+    try {
+      await apiFetch('/api/sessions', {
+        json: {
+          date: todayFortaleza(),
+          workoutId: workout.id,
+          dayId: day.dayId,
+          dayLabel: day.label,
+          duration: finalElapsed,
+          exercisesData,
+          notes: sessionNotes.trim() || null,
+        },
+      })
+    } catch (err) {
+      setFinishing(false)
+      toast(`${err.message} Seu treino continua aqui, nada foi perdido.`, 'error')
+      return
+    }
+
     clearWorkoutStorage()
 
-    const today = todayFortaleza()
-    await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userEmail: session.user.email,
-        date: today,
-        workoutId: workout.id,
-        dayId: day.dayId,
-        dayLabel: day.label,
-        duration: finalElapsed,
-        exercisesData,
-        notes: sessionNotes.trim() || null,
-      }),
-    })
+    const plannedSets = Object.values(setsData).reduce((a, x) => a + x.length, 0)
 
-    setSummary({ duration: finalElapsed, totalVolume, totalSetsCompleted, totalReps, exSummaries })
+    setInProgress(null)
+    setSummary({
+      duration: finalElapsed,
+      totalVolume,
+      totalSetsCompleted,
+      totalReps,
+      exSummaries,
+      allComplete: plannedSets > 0 && totalSetsCompleted === plannedSets,
+      plannedSets,
+    })
     setFinishing(false)
   }
 
@@ -503,12 +573,32 @@ export default function Treino() {
           <div className="relative bg-[#1a1a1a] border border-green-900/50 rounded-2xl p-6 overflow-hidden text-center">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-green-700 via-green-500 to-green-700" />
             <div className="w-14 h-14 bg-green-900/40 border border-green-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
+              {summary.allComplete ? (
+                <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 21h8m-4-4v4m5-17v4a5 5 0 01-10 0V4h10zm0 2h2a2 2 0 010 4h-2m-10-4H5a2 2 0 000 4h2" />
+                </svg>
+              ) : (
+                <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
             </div>
-            <h1 className="font-heading font-black text-3xl uppercase text-white mb-1">Treino concluído!</h1>
-            <p className="text-zinc-400 text-sm">{day?.label} · {fmt(summary.duration)}</p>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h1 className="font-heading font-black text-3xl uppercase text-white">
+                {summary.allComplete ? 'Treino completo!' : 'Treino concluído!'}
+              </h1>
+              {summary.allComplete && (
+                <span className="px-1.5 py-0.5 bg-yellow-500 text-black text-[10px] font-black uppercase tracking-widest rounded flex-shrink-0">
+                  100%
+                </span>
+              )}
+            </div>
+            <p className="text-zinc-400 text-sm">{day?.label} · {formatDuration(summary.duration, "short")}</p>
+            {summary.allComplete && (
+              <p className="text-green-400 text-xs mt-2">
+                Todas as {summary.plannedSets} séries planejadas, sem deixar nenhuma para trás.
+              </p>
+            )}
           </div>
 
           {/* KPIs rápidos */}
@@ -624,17 +714,66 @@ export default function Treino() {
           <p className="text-xs text-zinc-400 uppercase tracking-widest mb-2">Treinar</p>
           <h1 className="font-heading font-black text-4xl uppercase text-white mb-1">Qual dia é hoje?</h1>
           <p className="text-zinc-300 text-sm mb-6">Escolha o dia do treino que você vai realizar.</p>
+
+          {/* Sessão em andamento: volta pra ela sem reiniciar o cronômetro */}
+          {inProgress && (
+            <button
+              onClick={resumeInProgress}
+              className="w-full flex items-center gap-3 p-4 mb-5 bg-amber-950/20 border border-amber-700 hover:border-amber-500 rounded-2xl text-left transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Em andamento · {formatDuration(elapsed)}</p>
+                <p className="font-heading font-bold text-white text-sm uppercase truncate">{inProgress.label}</p>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex-shrink-0">Continuar</span>
+            </button>
+          )}
+
+          {standalone && (
+            <div className="flex items-start gap-3 p-3 mb-5 bg-amber-950/20 border border-amber-800 rounded-xl">
+              <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-amber-300">
+                  <span className="font-bold uppercase tracking-widest">Só hoje</span>
+                  {' · '}
+                  {formatConfigs[workout.format]?.name || workout.format}
+                </p>
+                <p className="text-[11px] text-amber-400/70 mt-0.5">
+                  A sessão conta normalmente; seu treino ativo continua sendo o outro.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push('/treino')}
+                className="flex-shrink-0 text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-300 transition-colors"
+              >
+                Usar ativo
+              </button>
+            </div>
+          )}
           <div className="space-y-3">
-            {workout.days.map(d => {
-              const total = d.exercises.reduce((a, mg) => a + mg.exercises.length, 0)
-              const isRecommended = d.dayId === recommendedDayId
+            {(workout?.days || []).map(d => {
+              const total = countExercises(d)
+              // Dia sem exercício não abre: flatEx vazio quebrava a tela.
+              const isEmpty = total === 0
+              const isRecommended = !isEmpty && d.dayId === recommendedDayId
               return (
-                <button key={d.dayId} onClick={() => setPreviewDay(d)}
+                <button key={d.dayId} onClick={() => !isEmpty && setPreviewDay(d)}
+                  disabled={isEmpty}
                   className={`w-full border rounded-2xl p-5 text-left transition-all group relative ${
-                    isRecommended
-                      ? 'bg-red-950/20 border-red-700 hover:border-red-500'
-                      : 'bg-[#1a1a1a] border-zinc-800 hover:border-zinc-600'
+                    isEmpty
+                      ? 'bg-[#141414] border-zinc-800 border-dashed cursor-not-allowed'
+                      : isRecommended
+                        ? 'bg-red-950/20 border-red-700 hover:border-red-500'
+                        : 'bg-[#1a1a1a] border-zinc-800 hover:border-zinc-600'
                   }`}>
+                  {isEmpty && (
+                    <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 bg-zinc-800 text-zinc-500 rounded-full uppercase tracking-widest">
+                      Incompleto
+                    </span>
+                  )}
                   {isRecommended && (
                     <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 bg-red-600 text-white rounded-full uppercase tracking-widest">
                       Hoje
@@ -645,17 +784,70 @@ export default function Treino() {
                       <p className={`text-xs uppercase tracking-widest mb-1 ${isRecommended ? 'text-red-400' : 'text-zinc-400'}`}>
                         Dia {d.dayId}
                       </p>
-                      <p className="font-heading font-black text-xl uppercase text-white">{d.label}</p>
-                      <p className="text-zinc-300 text-xs mt-1">{total} exercícios</p>
+                      <p className={`font-heading font-black text-xl uppercase ${isEmpty ? 'text-zinc-500' : 'text-white'}`}>{d.label}</p>
+                      <p className="text-zinc-300 text-xs mt-1">
+                        {isEmpty ? 'Sem exercícios — edite o plano' : `${total} exercícios`}
+                      </p>
                     </div>
-                    <svg className={`w-5 h-5 transition-colors flex-shrink-0 ml-12 ${isRecommended ? 'text-red-500 group-hover:text-red-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-5 h-5 transition-colors flex-shrink-0 ml-12 ${isEmpty ? 'text-zinc-700' : isRecommended ? 'text-red-500 group-hover:text-red-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                 </button>
               )
             })}
+
+            {!workout && (
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="w-full py-3 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wide rounded-xl transition-colors"
+              >
+                Criar um plano de treino
+              </button>
+            )}
           </div>
+
+          {/* Fazer outro treino salvo só neste dia, sem trocar o ativo.
+              Escondido com treino em andamento: trocar de plano ali seria ignorado. */}
+          {!inProgress && otherWorkouts.length > 0 && (
+            <div className="mt-8">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">
+                Fazer outro treino só hoje
+              </p>
+              <div className="space-y-2">
+                {otherWorkouts.map(w => {
+                  const dias = w.days?.length || 0
+                  const series = countSeries(w.days)
+                  return (
+                    <button
+                      key={w.id}
+                      onClick={() => router.push(`/treino?workout=${w.id}`)}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-[#1a1a1a] border border-zinc-800 hover:border-amber-700 rounded-xl text-left transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-heading font-bold text-white text-sm uppercase truncate">
+                            {formatConfigs[w.format]?.name || w.format}
+                          </p>
+                          {w.id === activeWorkoutId && (
+                            <span className="px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest rounded flex-shrink-0">
+                              Ativo
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">
+                          {dias} {dias === 1 ? 'dia' : 'dias'} · {series} séries
+                        </p>
+                      </div>
+                      <svg className="w-4 h-4 text-zinc-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Modal de prévia do dia */}
@@ -671,7 +863,7 @@ export default function Treino() {
                     <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest mb-1">Dia {previewDay.dayId}</p>
                     <h3 className="font-heading font-black text-2xl uppercase text-white leading-tight">{previewDay.label}</h3>
                     <p className="text-zinc-400 text-xs mt-1">
-                      {previewDay.exercises.reduce((a, mg) => a + mg.exercises.length, 0)} exercícios
+                      {countExercises(previewDay)} exercícios
                     </p>
                   </div>
                   <button onClick={() => setPreviewDay(null)} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0">
@@ -733,6 +925,7 @@ export default function Treino() {
 
   /* ── Treino ativo ── */
   const { total, totalSets, doneSets, pct } = getStats()
+  const allDone = totalSets > 0 && doneSets === totalSets
   const ex = flatEx[currentIdx]
   const sets = setsData[currentIdx] || []
   const isLast = currentIdx === flatEx.length - 1
@@ -749,7 +942,7 @@ export default function Treino() {
   return (
     <div className="min-h-screen bg-[#0f0f0f]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {restEndTime && (
-        <RestTimerWidget endTime={restEndTime} totalSeconds={restTotal} onDone={() => { setRestEndTime(null); setRestingSet(null); localStorage.removeItem('restTimerEnd'); localStorage.removeItem('restTimerTotal'); localStorage.removeItem('restTimerSet') }} />
+        <RestTimerWidget endTime={restEndTime} totalSeconds={restTotal} onDone={clearRestTimer} />
       )}
 
       {showFinishModal && (
@@ -758,53 +951,114 @@ export default function Treino() {
           <div className="relative bg-[#1a1a1a] border border-zinc-700 rounded-2xl p-6 w-full max-w-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-green-900/40 border border-green-700 rounded-xl flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
+                {allDone ? (
+                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 21h8m-4-4v4m5-17v4a5 5 0 01-10 0V4h10zm0 2h2a2 2 0 010 4h-2m-10-4H5a2 2 0 000 4h2" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
               </div>
-              <div>
-                <h3 className="font-heading font-black text-xl uppercase text-white leading-none">Encerrar treino</h3>
-                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-heading font-black text-xl uppercase text-white leading-none">
+                    {allDone ? 'Parabéns!' : 'Encerrar treino'}
+                  </h3>
+                  {allDone && (
+                    <span className="px-1.5 py-0.5 bg-yellow-500 text-black text-[9px] font-black uppercase tracking-widest rounded flex-shrink-0">
+                      100%
+                    </span>
+                  )}
+                </div>
+                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {formatDuration(elapsed)}</p>
               </div>
             </div>
-            <p className="text-zinc-300 text-sm mb-4">
-              Os dados das séries completadas serão salvos. Séries não marcadas como feitas serão ignoradas.
-            </p>
-            <textarea
-              value={sessionNotes}
-              onChange={e => setSessionNotes(e.target.value)}
-              placeholder="Anotação da sessão (opcional) — como você se sentiu, observações..."
-              rows={3}
-              className="w-full mb-5 resize-none"
-            />
+            {allDone ? (
+              <div className="mb-5">
+                <p className="text-zinc-200 text-sm mb-4">
+                  Você fechou <strong className="text-white font-semibold">todas as {totalSets} séries</strong>
+                  {' '}dos {total} {total === 1 ? 'exercício' : 'exercícios'} de hoje. Nada ficou para trás.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-[#232323] border border-zinc-800 rounded-xl p-2.5 text-center">
+                    <p className="font-heading font-black text-xl text-white leading-none">{total}</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-1">Exercícios</p>
+                  </div>
+                  <div className="bg-[#232323] border border-zinc-800 rounded-xl p-2.5 text-center">
+                    <p className="font-heading font-black text-xl text-white leading-none">{totalSets}</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-1">Séries</p>
+                  </div>
+                  <div className="bg-[#232323] border border-zinc-800 rounded-xl p-2.5 text-center">
+                    <p className="font-heading font-black text-xl text-white leading-none">{formatDuration(elapsed, 'short')}</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-1">Duração</p>
+                  </div>
+                </div>
+              </div>
+            ) : doneSets === 0 ? (
+              <div className="flex items-start gap-2.5 p-3 mb-4 bg-amber-950/25 border border-amber-800 rounded-xl">
+                <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p className="text-xs text-amber-300">
+                  Nenhuma série foi marcada como feita. Salvar assim criaria um treino vazio no
+                  histórico, contando na sua sequência sem nada registrado.
+                </p>
+              </div>
+            ) : (
+              <p className="text-zinc-300 text-sm mb-4">
+                Os dados das séries completadas serão salvos. Séries não marcadas como feitas serão ignoradas.
+              </p>
+            )}
+            {doneSets > 0 && (
+              <textarea
+                value={sessionNotes}
+                onChange={e => setSessionNotes(e.target.value)}
+                placeholder="Anotação da sessão (opcional) — como você se sentiu, observações..."
+                rows={3}
+                className="w-full mb-5 resize-none"
+              />
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowFinishModal(false)}
                 className="flex-1 py-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-300 font-semibold uppercase tracking-wide text-xs rounded-xl transition-colors"
               >
-                Continuar
+                {allDone ? 'Ainda não' : 'Continuar'}
               </button>
-              <button
-                onClick={() => { setShowFinishModal(false); finish() }}
-                disabled={finishing}
-                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
-              >
-                {finishing ? 'Salvando...' : 'Salvar treino'}
-              </button>
+              {doneSets === 0 ? (
+                <button
+                  onClick={() => { setShowFinishModal(false); setShowCancelConfirm(true) }}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors"
+                >
+                  Descartar
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setShowFinishModal(false); finish() }}
+                  disabled={finishing}
+                  className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 text-white font-heading font-bold uppercase tracking-widest text-sm rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {finishing ? 'Salvando...' : allDone ? 'Encerrar treino' : 'Salvar treino'}
+                </button>
+              )}
             </div>
 
             {/* Opção destrutiva: cancelar sem salvar */}
-            <div className="mt-5 pt-4 border-t border-zinc-800">
-              <button
-                onClick={() => { setShowFinishModal(false); setShowCancelConfirm(true) }}
-                className="w-full py-2.5 text-red-500 hover:text-red-400 font-semibold uppercase tracking-wide text-xs transition-colors"
-              >
-                Cancelar treino sem salvar
-              </button>
-              <p className="text-zinc-400 text-[11px] text-center mt-1">
-                O treino não ficará no histórico
-              </p>
-            </div>
+            {doneSets > 0 && (
+              <div className="mt-5 pt-4 border-t border-zinc-800">
+                <button
+                  onClick={() => { setShowFinishModal(false); setShowCancelConfirm(true) }}
+                  className="w-full py-2.5 text-red-500 hover:text-red-400 font-semibold uppercase tracking-wide text-xs transition-colors"
+                >
+                  Cancelar treino sem salvar
+                </button>
+                <p className="text-zinc-400 text-[11px] text-center mt-1">
+                  O treino não ficará no histórico
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -821,11 +1075,13 @@ export default function Treino() {
               </div>
               <div>
                 <h3 className="font-heading font-black text-xl uppercase text-white leading-none">Cancelar treino</h3>
-                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {fmt(elapsed)}</p>
+                <p className="text-zinc-400 text-xs mt-0.5">Tempo: {formatDuration(elapsed)}</p>
               </div>
             </div>
             <p className="text-zinc-300 text-sm mb-6">
-              Todo o progresso será perdido. O treino não será salvo no histórico.
+              {doneSets === 0
+                ? 'Nenhuma série foi registrada, então nada se perde. O treino não entra no histórico.'
+                : `${doneSets} ${doneSets === 1 ? 'série registrada será perdida' : 'séries registradas serão perdidas'}. O treino não será salvo no histórico.`}
             </p>
             <div className="flex gap-3">
               <button
@@ -849,7 +1105,7 @@ export default function Treino() {
         {/* Top bar — fixo no topo durante o scroll */}
         <div className="sticky top-0 z-30 bg-[#0f0f0f] py-4 -mx-4 px-4 mb-5 flex items-center justify-between">
           <button
-            onClick={() => { setSelectedDayId(null); setViewOnly(false); setSetsData({}) }}
+            onClick={() => { setSelectedDayId(null); setViewOnly(false) }}
             className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 uppercase tracking-widest transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -858,6 +1114,11 @@ export default function Treino() {
             Voltar
           </button>
           <div className="flex items-center gap-3">
+            {standalone && (
+              <span className="px-2.5 py-1 bg-amber-500/15 border border-amber-700 rounded-lg text-[10px] text-amber-400 font-bold uppercase tracking-widest">
+                Só hoje
+              </span>
+            )}
             {viewOnly ? (
               <>
                 <span className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-400 font-semibold uppercase tracking-widest">
@@ -1119,10 +1380,11 @@ export default function Treino() {
                       </div>
                       <div className="flex justify-end">
                         <button
-                          onClick={() => !viewOnly && markDone(currentIdx, si)}
-                          disabled={set.done || viewOnly}
+                          onClick={() => !viewOnly && toggleDone(currentIdx, si)}
+                          disabled={viewOnly}
+                          title={set.done ? 'Toque de novo para desmarcar' : 'Concluir série'}
                           className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-all disabled:cursor-not-allowed ${
-                            set.done ? 'bg-red-600 border-red-600' : 'border-zinc-700 hover:border-red-500 hover:bg-red-600/10'
+                            set.done ? 'bg-red-600 border-red-600 hover:bg-red-700' : 'border-zinc-700 hover:border-red-500 hover:bg-red-600/10'
                           }`}
                         >
                           {set.done && (

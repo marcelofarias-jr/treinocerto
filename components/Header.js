@@ -2,8 +2,8 @@ import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-
-const ADMIN_EMAIL = 'marcelobfariasjr@gmail.com'
+import { formatDuration } from "../lib/format";
+import { playBeep, vibrate } from "../lib/beep";
 
 const NAV = [
   {
@@ -63,14 +63,6 @@ const NAV = [
   },
 ];
 
-function fmt(s) {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const sec = s % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-}
-
 export default function Header() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -101,22 +93,12 @@ export default function Header() {
           setRestRemaining(remaining);
           beepedRef.current = false;
         } else {
+          // O Header é o único dono do alarme: está montado em todas as
+          // páginas, inclusive /treino, onde o widget de descanso é só visual.
           if (!beepedRef.current) {
             beepedRef.current = true;
-            try {
-              const ctx = new (window.AudioContext || window.webkitAudioContext)();
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              osc.frequency.value = 880;
-              osc.type = 'sine';
-              gain.gain.setValueAtTime(0.3, ctx.currentTime);
-              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-              osc.start(ctx.currentTime);
-              osc.stop(ctx.currentTime + 0.6);
-            } catch (_) {}
-            if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
+            playBeep();
+            vibrate();
           }
           setRestRemaining(0);
           localStorage.removeItem('restTimerEnd');
@@ -180,7 +162,7 @@ export default function Header() {
                 </Link>
               );
             })}
-            {session?.user?.email === ADMIN_EMAIL && (
+            {session?.user?.isAdmin && (
               <Link href="/admin/exercises"
                 className={`px-4 py-5 text-xs font-semibold uppercase tracking-widest border-b-2 transition-colors ${
                   router.pathname === '/admin/exercises' ? "text-white border-red-500" : "text-red-500 border-transparent hover:text-red-400"
@@ -232,7 +214,7 @@ export default function Header() {
               </button>
             </div>
             <p className={`font-heading font-black text-2xl leading-none tracking-widest text-center ${restRemaining <= 5 ? 'text-red-500' : 'text-white'}`}>
-              {fmt(restRemaining)}
+              {formatDuration(restRemaining)}
             </p>
             <div className="h-0.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
               <div
@@ -247,13 +229,13 @@ export default function Header() {
       {/* Barra de treino ativo — aparece em todas as páginas exceto /treino */}
       {hasActiveWorkout && !isTrainoAtivo && (
         <Link href="/treino"
-          className="md:hidden fixed bottom-16 left-0 right-0 z-39 flex items-center justify-between px-4 py-2.5 bg-amber-600 border-t border-amber-500"
+          className="md:hidden fixed bottom-16 left-0 right-0 z-30 flex items-center justify-between px-4 py-2.5 bg-amber-600 border-t border-amber-500"
         >
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0" />
             <span className="text-xs font-semibold text-white uppercase tracking-widest">Treino em andamento</span>
           </div>
-          <span className="font-heading font-black text-white text-base tracking-widest">{fmt(elapsed)}</span>
+          <span className="font-heading font-black text-white text-base tracking-widest">{formatDuration(elapsed)}</span>
         </Link>
       )}
 
@@ -276,7 +258,7 @@ export default function Header() {
                 </Link>
               );
             })}
-            {session?.user?.email === ADMIN_EMAIL && (
+            {session?.user?.isAdmin && (
               <Link href="/admin/exercises"
                 className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${
                   router.pathname === '/admin/exercises' ? "text-red-500" : "text-red-700 hover:text-red-500"
