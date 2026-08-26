@@ -1,33 +1,39 @@
 import supabase from '../../lib/supabase'
+import { requireUser } from '../../lib/apiAuth'
+import { isValidDate, parseNumberInRange } from '../../lib/validate'
 
 export default async function handler(req, res) {
+  const user = await requireUser(req, res)
+  if (!user) return
+
   if (req.method === 'GET') {
-    const { email, last } = req.query
-    if (!email) return res.status(400).json({ error: 'Email required' })
+    const { last } = req.query
 
     let query = supabase
       .from('body_weight')
       .select('id, date, weight')
-      .eq('user_email', email)
+      .eq('user_email', user.email)
       .order('date', { ascending: last ? false : true })
 
     if (last) query = query.limit(1)
 
     const { data, error } = await query
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) { console.error('body-weight GET:', error.message); return res.status(500).json({ error: error.message }) }
 
     const result = (data || []).map(r => ({ id: r.id, date: r.date, weight: parseFloat(r.weight) }))
     return res.status(200).json(last ? (result[0] || null) : result)
   }
 
   if (req.method === 'POST') {
-    const { userEmail, date, weight } = req.body
-    if (!userEmail || !date || !weight) return res.status(400).json({ error: 'userEmail, date and weight required' })
+    const { date, weight } = req.body
+    if (!isValidDate(date)) return res.status(400).json({ error: 'date deve estar no formato YYYY-MM-DD' })
+    const kg = parseNumberInRange(weight, 20, 400)
+    if (kg === null) return res.status(400).json({ error: 'weight deve estar entre 20 e 400 kg' })
 
     const { data: existing } = await supabase
       .from('body_weight')
       .select('id')
-      .eq('user_email', userEmail)
+      .eq('user_email', user.email)
       .eq('date', date)
       .maybeSingle()
 
@@ -35,33 +41,36 @@ export default async function handler(req, res) {
     if (existing) {
       ;({ data: result, error } = await supabase
         .from('body_weight')
-        .update({ weight: parseFloat(weight) })
+        .update({ weight: kg })
         .eq('id', existing.id)
+        .eq('user_email', user.email)
         .select('id, date, weight')
         .single())
     } else {
       ;({ data: result, error } = await supabase
         .from('body_weight')
-        .insert({ id: Date.now(), user_email: userEmail, date, weight: parseFloat(weight) })
+        .insert({ user_email: user.email, date, weight: kg })
         .select('id, date, weight')
         .single())
     }
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) { console.error('body-weight POST:', error.message); return res.status(500).json({ error: error.message }) }
     return res.status(200).json({ id: result.id, date: result.date, weight: parseFloat(result.weight) })
   }
 
   if (req.method === 'DELETE') {
-    const { id, email } = req.query
-    if (!id || !email) return res.status(400).json({ error: 'id and email required' })
+    const { id } = req.query
+    if (!id) return res.status(400).json({ error: 'id obrigatório' })
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('body_weight')
       .delete()
       .eq('id', id)
-      .eq('user_email', email)
+      .eq('user_email', user.email)
+      .select('id')
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) { console.error('body-weight DELETE:', error.message); return res.status(500).json({ error: error.message }) }
+    if (!data?.length) return res.status(404).json({ error: 'Registro não encontrado' })
     return res.status(200).json({ success: true })
   }
 

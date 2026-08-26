@@ -1,16 +1,4 @@
 import NextAuth from 'next-auth'
-import GoogleProvider from 'next-auth/providers/google'
+import { authOptions } from '../../../lib/auth'
 
-export default NextAuth({
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    })
-  ],
-  callbacks: {
-    async session({ session, token, user }) {
-      return session
-    }
-  }
-})
+export default NextAuth(authOptions)
