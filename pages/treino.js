@@ -125,6 +125,16 @@ function RestTimerWidget({ endTime, totalSeconds, onDone }) {
 // Acima disso a sessão em andamento é tratada como abandonada.
 const MAX_SESSION_MS = 12 * 60 * 60 * 1000
 
+/*
+ * Compara dayIds sem depender do tipo.
+ *
+ * Formatos misturam os tipos de id — Full Body usa 1 (número), Upper/Lower e
+ * PPL usam 'A'/'B' (string) — e o localStorage só guarda string. Comparando
+ * com === o dia do Full Body nunca era reencontrado ao voltar para a tela, e a
+ * sessão em andamento era apagada como se o treino não existisse mais.
+ */
+const sameDayId = (a, b) => a != null && b != null && String(a) === String(b)
+
 // Séries iniciais de um exercício: repete o que foi feito da última vez.
 function buildInitialSets(exs, history, keepDone = false) {
   const init = {}
@@ -140,12 +150,45 @@ function buildInitialSets(exs, history, keepDone = false) {
   return init
 }
 
+/*
+ * Reencaixa as séries salvas nos exercícios do dia.
+ *
+ * O plano pode mudar depois do treino começar (um exercício novo no dia, por
+ * exemplo). Sem esse reencaixe o exercício novo aparecia só com o nome e sem
+ * nenhuma linha de série na tela — e, pior, ficava fora da contagem e do
+ * "fecha o treino", que passava a propor o encerramento antes da hora.
+ *
+ * Casa por nome quando a lista de nomes foi salva, para que um exercício
+ * inserido no meio não herde as cargas do vizinho; sem os nomes (sessão
+ * iniciada antes desta versão) cai para o índice, como era antes.
+ */
+function reconcileSets(saved, savedNames, exs, history) {
+  const fresh = buildInitialSets(exs, history)
+  if (!saved) return fresh
+
+  const byName = Array.isArray(savedNames) && savedNames.length > 0
+  const used = new Set()
+  const out = {}
+  exs.forEach((ex, i) => {
+    const from = byName
+      ? savedNames.findIndex((n, k) => n === ex.name && !used.has(k))
+      : i
+    const sets = from >= 0 && Array.isArray(saved[from]) && saved[from].length > 0
+      ? saved[from]
+      : null
+    if (sets) used.add(from)
+    out[i] = sets || fresh[i]
+  })
+  return out
+}
+
 function clearWorkoutStorage() {
   localStorage.removeItem('workoutStartTime')
   localStorage.removeItem('workoutPlanId')
   localStorage.removeItem('workoutDayId')
   localStorage.removeItem('workoutCurrentIdx')
   localStorage.removeItem('workoutSetsData')
+  localStorage.removeItem('workoutExNames')
 }
 
 export default function Treino() {
@@ -183,6 +226,9 @@ export default function Treino() {
     if (!session || !router.isReady) return
     // ?workout=<id> treina um plano salvo qualquer, sem mudar qual é o ativo.
     const requestedId = router.query.workout != null ? String(router.query.workout) : null
+    // Falha de rede não pode ser confundida com "o treino não existe mais":
+    // essa distinção é o que impede a restauração de apagar a sessão viva.
+    let loadFailed = false
     Promise.all([
       apiFetch('/api/workouts'),
       apiFetch('/api/sessions'),
@@ -190,6 +236,7 @@ export default function Treino() {
       // Sem isso, uma sessão expirada virava a tela "Nenhum treino encontrado".
       toast(err.message, 'error')
       setLoading(false)
+      loadFailed = true
       return [[], []]
     }).then(([ws, ss]) => {
       const list = Array.isArray(ws) ? ws : []
@@ -215,12 +262,23 @@ export default function Treino() {
       // cronômetro segue contando por dias e a duração salva vira lixo.
       if (Date.now() - parseInt(startTime) > MAX_SESSION_MS) { clearWorkoutStorage(); return }
 
-      // Verifica se o dayId ainda existe no treino restaurado
-      const savedDay = w?.days?.find(d => d.dayId === savedDayId)
-      if (!savedDay) { clearWorkoutStorage(); return }
+      // Sem o plano em mãos não há como julgar a sessão: /api/workouts falhou
+      // ou veio vazio. Mantém tudo salvo — a próxima carga bem-sucedida
+      // restaura o treino em vez de descartá-lo por causa da rede da academia.
+      if (loadFailed || !w) return
 
-      setInProgress({ dayId: savedDayId, label: savedDay.label })
-      setSelectedDayId(savedDayId)
+      // Verifica se o dayId ainda existe no treino restaurado
+      const savedDay = w.days?.find(d => sameDayId(d.dayId, savedDayId))
+      if (!savedDay) {
+        clearWorkoutStorage()
+        toast('O dia do treino em andamento não existe mais neste plano; a sessão foi descartada.', 'error')
+        return
+      }
+
+      // Guarda o dayId do plano (não a string do localStorage) para que as
+      // comparações seguintes de tela continuem funcionando.
+      setInProgress({ dayId: savedDay.dayId, label: savedDay.label })
+      setSelectedDayId(savedDay.dayId)
       setCurrentIdx(parseInt(localStorage.getItem('workoutCurrentIdx') || '0'))
 
       // Tenta restaurar setsData do localStorage
@@ -230,21 +288,24 @@ export default function Treino() {
         if (saved) restoredSets = JSON.parse(saved)
       } catch (_) {}
 
-      const hasRestoredSets = restoredSets && Object.keys(restoredSets).length > 0
+      let restoredNames = null
+      try {
+        restoredNames = JSON.parse(localStorage.getItem('workoutExNames') || 'null')
+      } catch (_) {}
+
       const history = buildHistory(sessions)
       setExerciseHistory(history)
 
-      if (hasRestoredSets) {
-        setSetsData(restoredSets)
-      } else {
-        // setsData não estava salvo — inicializa a partir do treino + histórico
-        const exs = savedDay.exercises.flatMap(mg =>
-          mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
-        )
-        const init = buildInitialSets(exs, history)
-        setSetsData(init)
-        localStorage.setItem('workoutSetsData', JSON.stringify(init))
-      }
+      // Alinha o que estava salvo com os exercícios que o dia tem AGORA: o que
+      // já foi registrado é mantido e todo exercício ganha suas séries, mesmo
+      // os que entraram no plano com o treino em andamento.
+      const exs = savedDay.exercises.flatMap(mg =>
+        mg.exercises.map(ex => typeof ex === 'string' ? { name: ex } : ex)
+      )
+      const merged = reconcileSets(restoredSets, restoredNames, exs, history)
+      setSetsData(merged)
+      localStorage.setItem('workoutSetsData', JSON.stringify(merged))
+      localStorage.setItem('workoutExNames', JSON.stringify(exs.map(e => e.name)))
       setsDataInitialized.current = true
     })
   }, [session, router.isReady, router.query.workout])
@@ -272,11 +333,20 @@ export default function Treino() {
   useEffect(() => {
     const saved = localStorage.getItem('workoutStartTime')
     if (saved) setElapsed(Math.floor((Date.now() - parseInt(saved)) / 1000))
-    const t = setInterval(() => {
+    // Zera quando não há sessão: guardar o último valor deixava o cronômetro
+    // congelado num tempo qualquer depois de encerrar ou descartar o treino.
+    const tick = () => {
       const start = localStorage.getItem('workoutStartTime')
-      if (start) setElapsed(Math.floor((Date.now() - parseInt(start)) / 1000))
-    }, 1000)
-    return () => clearInterval(t)
+      setElapsed(start ? Math.floor((Date.now() - parseInt(start)) / 1000) : 0)
+    }
+    const t = setInterval(tick, 1000)
+    // Voltar de outro app/aba atualiza na hora, sem esperar o próximo tick.
+    const onVisible = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   // Persiste setsData e currentIdx em tempo real
@@ -319,7 +389,7 @@ export default function Treino() {
   if (!session) { router.push('/'); return null }
 
   const recommendedDayId = recommendedDay(workout, allSessions)?.dayId ?? null
-  const openDay = selectedDayId != null ? workout?.days?.find(d => d.dayId === selectedDayId) : null
+  const openDay = selectedDayId != null ? workout?.days?.find(d => sameDayId(d.dayId, selectedDayId)) : null
   // Dia sem exercício não abre: flatEx vazio deixava `ex` undefined e quebrava
   // a tela. Sem dia válido, a rota cai na seleção.
   const day = openDay?.exercises?.some(mg => mg.exercises?.length) ? openDay : null
@@ -358,9 +428,10 @@ export default function Treino() {
     setCurrentIdx(0)
     localStorage.setItem('workoutStartTime', String(Date.now()))
     localStorage.setItem('workoutPlanId', String(workout.id))
-    localStorage.setItem('workoutDayId', dayId)
+    localStorage.setItem('workoutDayId', String(dayId))
     localStorage.setItem('workoutCurrentIdx', '0')
     localStorage.setItem('workoutSetsData', JSON.stringify(init))
+    localStorage.setItem('workoutExNames', JSON.stringify(exs.map(e => e.name)))
   }
 
   // Volta para a sessão em andamento relendo o estado persistido — assim um
@@ -431,10 +502,18 @@ export default function Treino() {
     // Toque do usuário: bom momento para acordar o áudio antes do alarme.
     primeAudio()
 
-    // Se esta série fecha o treino, não inicia descanso: o encerramento é
-    // proposto em seguida e um cronômetro rodando atrás do modal só atrapalha.
-    const fechaOTreino = Object.entries(setsData).every(([k, arr]) =>
-      arr.every((st, i) => st.done || (String(k) === String(ei) && i === si))
+    /*
+     * Se esta série fecha o treino, não inicia descanso: acabou, não há próxima
+     * série para esperar — e o encerramento é proposto logo em seguida, com um
+     * cronômetro rodando atrás do modal só atrapalhando.
+     *
+     * `arr.length > 0` importa: [].every() é true, então um exercício sem série
+     * (plano alterado no meio do treino) fazia o app achar que o treino tinha
+     * acabado e cortar o descanso no meio.
+     */
+    const entries = Object.entries(setsData)
+    const fechaOTreino = entries.length > 0 && entries.every(([k, arr]) =>
+      arr.length > 0 && arr.every((st, i) => st.done || (String(k) === String(ei) && i === si))
     )
     if (fechaOTreino) return
 
