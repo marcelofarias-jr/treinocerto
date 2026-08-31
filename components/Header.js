@@ -16,15 +16,6 @@ const NAV = [
     ),
   },
   {
-    href: "/dashboard",
-    label: "Montar",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-      </svg>
-    ),
-  },
-  {
     href: "/my-workouts",
     label: "Treinos",
     icon: (
@@ -127,6 +118,9 @@ export default function Header() {
   if (!session) return null;
 
   const isTrainoAtivo = router.pathname === "/treino";
+  // Montar treino saiu do menu: entra-se por "+ Novo" em /my-workouts, então é
+  // esse item que fica aceso enquanto o plano está sendo montado ou editado.
+  const currentNav = router.pathname === "/dashboard" ? "/my-workouts" : router.pathname;
 
   return (
     <>
@@ -151,7 +145,7 @@ export default function Header() {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center">
             {NAV.map(({ href, label }) => {
-              const active = router.pathname === href;
+              const active = currentNav === href;
               return (
                 <Link key={href} href={href}
                   className={`px-4 py-5 text-xs font-semibold uppercase tracking-widest border-b-2 transition-colors ${
@@ -245,7 +239,7 @@ export default function Header() {
         >
           <div className="flex">
             {NAV.map(({ href, label, icon }) => {
-              const active = router.pathname === href;
+              const active = currentNav === href;
               return (
                 <Link key={href} href={href}
                   className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${
