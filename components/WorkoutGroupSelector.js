@@ -31,6 +31,7 @@ export default function WorkoutGroupSelector({
     fetch('/api/hidden-exercises')
       .then(r => r.json())
       .then(data => setHiddenExercises(new Set((Array.isArray(data) ? data : []).map(e => e.name))))
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -43,9 +44,20 @@ export default function WorkoutGroupSelector({
           if (!grouped[ex.muscleGroup]) grouped[ex.muscleGroup] = []
           grouped[ex.muscleGroup].push({ id: ex.id, name: ex.name })
         })
-        setCustomExercises(grouped)
+        // Preserva exercícios otimistas (ainda não confirmados pelo POST) que
+        // esse refetch (ex.: NextAuth revalidando sessão no foco da janela)
+        // não teria como conhecer ainda — senão eles somem da lista.
+        setCustomExercises(prev => {
+          const merged = { ...grouped }
+          for (const mg in prev) {
+            const pending = (prev[mg] || []).filter(e => String(e.id).startsWith('tmp-'))
+            if (pending.length) merged[mg] = [...(merged[mg] || []), ...pending]
+          }
+          return merged
+        })
       })
-  }, [session])
+      .catch(() => {})
+  }, [session?.user?.email])
 
   useEffect(() => {
     if (addingTo && inputRef.current) inputRef.current.focus()
