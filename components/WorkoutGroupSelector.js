@@ -84,11 +84,14 @@ export default function WorkoutGroupSelector({
   async function saveCustomExercise(mg) {
     const name = newExName.trim()
     if (!name || !session) return
+    // Exclui ocultos: senão um exercício escondido do catálogo bloqueia o
+    // cadastro de um novo com o mesmo nome sem aparecer em lugar nenhum.
     const existingNames = [
-      ...(exercisesByMuscleGroup[mg] || []),
+      ...(exercisesByMuscleGroup[mg] || []).filter(ex => !hiddenExercises.has(ex)),
       ...(customExercises[mg] || []).map(e => e.name),
     ]
     if (existingNames.some(e => e.toLowerCase() === name.toLowerCase())) {
+      toast('Esse exercício já existe nesse grupo', 'error')
       setNewExName(''); setAddingTo(null); return
     }
     const tempId = `tmp-${name}`
